@@ -1,6 +1,7 @@
 import argparse
 import re
 import sys
+import time
 
 import state
 import telegram_client
@@ -69,6 +70,9 @@ def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 def main():
+    start_time = time.time()
+    TIME_LIMIT = 240
+    
     args = parse_args()
     if not telegram_client.CHANNEL_ID:
         sys.exit(1)
@@ -86,8 +90,12 @@ def main():
         next_offset = update.get("update_id", 0) + 1
 
     for message_id, audio in telegram_client.iter_channel_audio_posts(updates):
+        if time.time() - start_time > TIME_LIMIT:
+            break
+            
         if state.is_processed(st, message_id):
             continue
+            
         ok, track_name = process_track(message_id, audio, args.dry_run)
         if ok:
             state.mark_processed(st, message_id)
