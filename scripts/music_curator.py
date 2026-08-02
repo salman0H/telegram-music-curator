@@ -4,7 +4,7 @@ import sys
 
 import state
 import telegram_client
-import spotify_client
+import itunes_client
 import caption_formatter
 
 def parse_args():
@@ -25,13 +25,13 @@ def extract_performer_title(audio):
         return performer or match.group(1), title or match.group(2)
     return performer or "Unknown Artist", title or (name_no_ext or "Unknown Title")
 
-def process_track(message_id, audio, token, dry_run):
+def process_track(message_id, audio, dry_run):
     performer, title = extract_performer_title(audio)
     album = None
     year = None
     genres = []
 
-    match = spotify_client.search_track(token, performer, title)
+    match = itunes_client.search_track(performer, title)
     if match:
         performer = match["artists"][0] if match["artists"] else performer
         title = match["name"] or title
@@ -39,14 +39,13 @@ def process_track(message_id, audio, token, dry_run):
         release_date = match.get("release_date")
         if release_date:
             year = release_date[:4]
-        if match.get("artist_ids"):
-            genres = spotify_client.get_artist_genres(token, match["artist_ids"][0])
+        if match.get("genres"):
+            genres = match["genres"]
 
     caption = caption_formatter.build_caption(performer, title, album, year, genres)
     track_display = f"{performer} - {title}"
 
     if dry_run:
-        print(f"--- message {message_id} (dry-run) ---\n{caption}\n")
         return True, track_display
 
     result = telegram_client.edit_message_caption(message_id, caption)
@@ -79,12 +78,6 @@ def main():
     if not updates:
         return
 
-    token = None if args.dry_run else spotify_client.get_access_token()
-    if not args.dry_run and not token:
-        st["consecutive_failures"] = st.get("consecutive_failures", 0) + 1
-        state.save_state(st)
-        sys.exit(1)
-
     processed_items = []
     failure_count = 0
     next_offset = st.get("offset")
@@ -95,7 +88,7 @@ def main():
     for message_id, audio in telegram_client.iter_channel_audio_posts(updates):
         if state.is_processed(st, message_id):
             continue
-        ok, track_name = process_track(message_id, audio, token, args.dry_run)
+        ok, track_name = process_track(message_id, audio, args.dry_run)
         if ok:
             state.mark_processed(st, message_id)
             if track_name:
@@ -118,9 +111,13 @@ def main():
         
         summary_text = "\n".join(summary_lines)
         if len(summary_text) > 4000:
-            summary_text = summary_text[:4000] + "\n\n... [Truncated due to limits]"
+            summary_text = summary_text[:4000] + "\n\n... [Truncated]"
             
-        telegram_client.send_message(summary_text)
+        msg_response = telegram_client.send_message(summary_text)
+        if msg_response and msg_response.get("ok"):
+            sent_message_id = msg_response.get("result", {}).get("message_id")
+            if sent_message_id:
+                telegram_client.pin_chat_message(sent_message_id)
 
 if __name__ == "__main__":
     main()

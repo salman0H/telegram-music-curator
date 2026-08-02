@@ -63,6 +63,14 @@ def send_message(text, reply_to_message_id=None, parse_mode="HTML"):
         payload["reply_to_message_id"] = reply_to_message_id
     return _post("sendMessage", payload)
 
+def pin_chat_message(message_id):
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "message_id": message_id,
+        "disable_notification": True
+    }
+    return _post("pinChatMessage", payload)
+
 def iter_channel_audio_posts(updates):
     for update in updates:
         post = update.get("channel_post")

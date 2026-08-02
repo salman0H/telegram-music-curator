@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Build captions and print them without editing Telegram'
+        description: 'Build captions without editing Telegram'
         required: false
         default: false
         type: boolean
@@ -40,8 +40,6 @@ jobs:
         env:
           MUSIC_BOT_TOKEN: ${{ secrets.MUSIC_BOT_TOKEN }}
           MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python scripts/music_curator.py --dry-run
@@ -66,9 +64,5 @@ jobs:
               git commit -m "chore: update music curator state (encrypted)"
               git pull --rebase origin main || true
               git push
-            else
-              echo "No state changes to commit."
             fi
-          else
-            echo "No state file produced (dry-run or no updates), skipping commit."
           fi
