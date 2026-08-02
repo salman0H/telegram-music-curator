@@ -1,0 +1,74 @@
+name: Music Caption Curator
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build captions and print them without editing Telegram'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Decrypt state
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          if [ -f "music_state.enc" ]; then
+            openssl aes-256-cbc -d -pbkdf2 -md sha256 -in music_state.enc -out music_state.tar.gz -pass pass:"$DB_PASSWORD"
+            tar -xzf music_state.tar.gz
+          fi
+
+      - name: Run curator
+        env:
+          MUSIC_BOT_TOKEN: ${{ secrets.MUSIC_BOT_TOKEN }}
+          MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python scripts/music_curator.py --dry-run
+          else
+            python scripts/music_curator.py
+          fi
+
+      - name: Encrypt and commit state
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [ -f music_state.json ]; then
+            tar -czf music_state.tar.gz music_state.json
+            openssl aes-256-cbc -salt -pbkdf2 -md sha256 -in music_state.tar.gz -out music_state.enc -pass pass:"$DB_PASSWORD"
+            rm -f music_state.json music_state.tar.gz
+
+            git add music_state.enc
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: update music curator state (encrypted)"
+              git pull --rebase origin main || true
+              git push
+            else
+              echo "No state changes to commit."
+            fi
+          else
+            echo "No state file produced (dry-run or no updates), skipping commit."
+          fi
