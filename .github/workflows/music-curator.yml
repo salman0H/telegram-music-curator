@@ -2,11 +2,11 @@ name: Music Caption Curator
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '30 22 * * *'  # ~2:00 AM Tehran time (UTC+3:30)
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Build captions without editing Telegram'
+        description: 'Build captions and print them without editing Telegram'
         required: false
         default: false
         type: boolean
@@ -40,6 +40,8 @@ jobs:
         env:
           MUSIC_BOT_TOKEN: ${{ secrets.MUSIC_BOT_TOKEN }}
           MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python scripts/music_curator.py --dry-run
@@ -54,15 +56,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if [ -f music_state.json ]; then
-            tar -czf music_state.tar.gz music_state.json
+          STATE_FILES=""
+          [ -f music_state.json ] && STATE_FILES="$STATE_FILES music_state.json"
+          [ -f hashtag_index.json ] && STATE_FILES="$STATE_FILES hashtag_index.json"
+
+          if [ -n "$STATE_FILES" ]; then
+            tar -czf music_state.tar.gz $STATE_FILES
             openssl aes-256-cbc -salt -pbkdf2 -md sha256 -in music_state.tar.gz -out music_state.enc -pass pass:"$DB_PASSWORD"
-            rm -f music_state.json music_state.tar.gz
+            rm -f music_state.json hashtag_index.json music_state.tar.gz
 
             git add music_state.enc
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: update music curator state (encrypted)"
-              git pull --rebase origin main || true
-              git push
-            fi
+          fi
+
+          # Plaintext on purpose — just hashtag counts, nothing sensitive,
+          # and being able to read it directly on GitHub without
+          # decrypting anything is the whole point of this file.
+          if [ -f hashtag_summary.txt ]; then
+            git add hashtag_summary.txt
+          fi
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update music curator state (encrypted) + hashtag summary"
+            git pull --rebase origin main || true
+            git push
+          else
+            echo "No state changes to commit."
           fi
