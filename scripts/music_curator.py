@@ -7,11 +7,20 @@ import state
 import telegram_client
 import itunes_client
 import caption_formatter
+import hashtag_index
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
+
+def get_message_link(channel_id, message_id):
+    cid_str = str(channel_id)
+    if cid_str.startswith("-100"):
+        return f"https://t.me/c/{cid_str[4:]}/{message_id}"
+    elif cid_str.startswith("@"):
+        return f"https://t.me/{cid_str[1:]}/{message_id}"
+    return f"https://t.me/c/{cid_str}/{message_id}"
 
 def extract_performer_title(audio):
     performer = audio.get("performer")
@@ -26,7 +35,7 @@ def extract_performer_title(audio):
         return performer or match.group(1), title or match.group(2)
     return performer or "Unknown Artist", title or (name_no_ext or "Unknown Title")
 
-def process_track(message_id, audio, dry_run):
+def process_track(channel_id, message_id, audio, dry_run):
     performer, title = extract_performer_title(audio)
     album = None
     year = None
@@ -43,28 +52,24 @@ def process_track(message_id, audio, dry_run):
         if match.get("genres"):
             genres = match["genres"]
 
+    hashtags = caption_formatter.genres_to_hashtags(genres)
     caption = caption_formatter.build_caption(performer, title, album, year, genres)
-    track_display = f"{performer} - {title}"
 
     if dry_run:
-        return True, track_display
+        return True, performer, title, hashtags
 
     result = telegram_client.edit_message_caption(message_id, caption)
     
     if not result or not result.get("ok"):
         reply_result = telegram_client.send_message(caption, reply_to_message_id=message_id)
         if not reply_result or not reply_result.get("ok"):
-            return False, None
+            link = get_message_link(channel_id, message_id)
+            fallback_caption = f"🔗 <a href='{link}'><b>Original Track</b></a>\n\n{caption}"
+            final_result = telegram_client.send_message(fallback_caption)
+            if not final_result or not final_result.get("ok"):
+                return False, None, None, []
 
-    return True, track_display
-
-def get_message_link(channel_id, message_id):
-    cid_str = str(channel_id)
-    if cid_str.startswith("-100"):
-        return f"https://t.me/c/{cid_str[4:]}/{message_id}"
-    elif cid_str.startswith("@"):
-        return f"https://t.me/{cid_str[1:]}/{message_id}"
-    return f"https://t.me/c/{cid_str}/{message_id}"
+    return True, performer, title, hashtags
 
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -85,9 +90,13 @@ def main():
     processed_items = []
     failure_count = 0
     next_offset = st.get("offset")
+    
+    index = hashtag_index.load_index()
 
     for update in updates:
-        next_offset = update.get("update_id", 0) + 1
+        update_id = update.get("update_id", 0)
+        if update_id >= next_offset:
+            next_offset = update_id + 1
 
     for message_id, audio in telegram_client.iter_channel_audio_posts(updates):
         if time.time() - start_time > TIME_LIMIT:
@@ -96,11 +105,16 @@ def main():
         if state.is_processed(st, message_id):
             continue
             
-        ok, track_name = process_track(message_id, audio, args.dry_run)
+        ok, performer, title, hashtags = process_track(telegram_client.CHANNEL_ID, message_id, audio, args.dry_run)
+        
         if ok:
             state.mark_processed(st, message_id)
-            if track_name:
-                processed_items.append((message_id, track_name))
+            track_name = f"{performer} - {title}"
+            processed_items.append((message_id, track_name))
+            
+            link = get_message_link(telegram_client.CHANNEL_ID, message_id)
+            for tag in hashtags:
+                hashtag_index.add_entry(index, tag, message_id, link, performer, title)
         else:
             failure_count += 1
 
@@ -109,6 +123,9 @@ def main():
 
     if not args.dry_run:
         state.save_state(st)
+        if processed_items:
+            hashtag_index.save_index(index)
+            hashtag_index.write_summary(index)
 
     if processed_items and not args.dry_run:
         summary_lines = [f"📊 <b>Curator Summary</b>\n\n✅ <b>{len(processed_items)}</b> tracks categorized:\n"]
