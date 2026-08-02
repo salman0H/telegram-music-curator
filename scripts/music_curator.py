@@ -80,12 +80,20 @@ def main():
     
     args = parse_args()
     if not telegram_client.CHANNEL_ID:
+        print("Error: MUSIC_CHANNEL_ID is not set in environment variables.")
         sys.exit(1)
 
+    print(f"Starting curator for channel ID: {telegram_client.CHANNEL_ID}")
+
     st = state.load_state()
+    print(f"Current offset from state: {st.get('offset')}")
+    
     updates = telegram_client.get_updates(offset=st.get("offset"))
     if not updates:
+        print("No new updates found from Telegram.")
         return
+
+    print(f"Fetched {len(updates)} new update(s) from Telegram.")
 
     processed_items = []
     failure_count = 0
@@ -98,24 +106,31 @@ def main():
         if update_id >= next_offset:
             next_offset = update_id + 1
 
+    audio_count = 0
     for message_id, audio in telegram_client.iter_channel_audio_posts(updates):
+        audio_count += 1
         if time.time() - start_time > TIME_LIMIT:
+            print("Time limit reached, stopping early.")
             break
             
         if state.is_processed(st, message_id):
+            print(f"Message ID {message_id} was already processed previously, skipping.")
             continue
             
+        print(f"Processing new audio message ID: {message_id}")
         ok, performer, title, hashtags = process_track(telegram_client.CHANNEL_ID, message_id, audio, args.dry_run)
         
         if ok:
             state.mark_processed(st, message_id)
             track_name = f"{performer} - {title}"
             processed_items.append((message_id, track_name))
+            print(f" -> Success: {track_name}")
             
             link = get_message_link(telegram_client.CHANNEL_ID, message_id)
             for tag in hashtags:
                 hashtag_index.add_entry(index, tag, message_id, link, performer, title)
         else:
+            print(f" -> Failed to process message ID: {message_id}")
             failure_count += 1
 
     st["offset"] = next_offset
@@ -127,22 +142,30 @@ def main():
             hashtag_index.save_index(index)
             hashtag_index.write_summary(index)
 
-    if processed_items and not args.dry_run:
-        summary_lines = [f"📊 <b>Curator Summary</b>\n\n✅ <b>{len(processed_items)}</b> tracks categorized:\n"]
-        for msg_id, t_name in processed_items:
-            link = get_message_link(telegram_client.CHANNEL_ID, msg_id)
-            safe_name = escape_html(t_name)
-            summary_lines.append(f"▪️ <a href='{link}'>{safe_name}</a>")
-        
-        summary_text = "\n".join(summary_lines)
-        if len(summary_text) > 4000:
-            summary_text = summary_text[:4000] + "\n\n... [Truncated]"
+    if processed_items:
+        print(f"\nSummary: Successfully processed {len(processed_items)} track(s).")
+        if not args.dry_run:
+            summary_lines = [f"📊 <b>Curator Summary</b>\n\n✅ <b>{len(processed_items)}</b> tracks categorized:\n"]
+            for msg_id, t_name in processed_items:
+                link = get_message_link(telegram_client.CHANNEL_ID, msg_id)
+                safe_name = escape_html(t_name)
+                summary_lines.append(f"▪️ <a href='{link}'>{safe_name}</a>")
             
-        msg_response = telegram_client.send_message(summary_text)
-        if msg_response and msg_response.get("ok"):
-            sent_message_id = msg_response.get("result", {}).get("message_id")
-            if sent_message_id:
-                telegram_client.pin_chat_message(sent_message_id)
+            summary_text = "\n".join(summary_lines)
+            if len(summary_text) > 4000:
+                summary_text = summary_text[:4000] + "\n\n... [Truncated]"
+                
+            msg_response = telegram_client.send_message(summary_text)
+            if msg_response and msg_response.get("ok"):
+                sent_message_id = msg_response.get("result", {}).get("message_id")
+                if sent_message_id:
+                    telegram_client.pin_chat_message(sent_message_id)
+                    print("Summary message sent and pinned in the channel.")
+    else:
+        if audio_count == 0:
+            print("\nSummary: No audio tracks were found in the fetched updates.")
+        else:
+            print(f"\nSummary: {audio_count} audio track(s) found, but none were newly processed (either failed or already processed).")
 
 if __name__ == "__main__":
     main()
