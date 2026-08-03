@@ -50,6 +50,7 @@ jobs:
           fi
 
       - name: Encrypt and commit state
+        if: always()
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
