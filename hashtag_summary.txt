@@ -1,3 +1,10 @@
-Hashtag summary — 1 tags, 2 tagged songs
+Hashtag summary — 8 tags, 12 tagged songs
 ========================================
-#Metal: 2
+#Metal: 3
+#HipHop/rap: 2
+#Farsi: 2
+#AdultContemporary: 1
+#Pop: 1
+#MúsicaMexicana: 1
+#DeathMetal/blackMetal: 1
+#Rock: 1
