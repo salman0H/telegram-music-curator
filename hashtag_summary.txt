@@ -1,8 +1,8 @@
-Hashtag summary — 40 tags, 444 tagged songs
+Hashtag summary — 40 tags, 445 tagged songs
 ========================================
 #Rock: 99
 #Pop: 62
-#Alternative: 61
+#Alternative: 62
 #Metal: 50
 #Singer/songwriter: 27
 #Jazz: 25
