@@ -1,6 +1,6 @@
-Hashtag summary — 41 tags, 468 tagged songs
+Hashtag summary — 41 tags, 471 tagged songs
 ========================================
-#Rock: 105
+#Rock: 107
 #Pop: 66
 #Alternative: 66
 #Metal: 51
@@ -16,11 +16,11 @@ Hashtag summary — 41 tags, 468 tagged songs
 #JPop: 4
 #Worldwide: 4
 #DeathMetal/blackMetal: 3
+#Indie: 3
 #Lullabies: 2
 #Dance: 2
 #Punk: 2
 #KPop: 2
-#Indie: 2
 #Folk: 2
 #AdultContemporary: 1
 #MúsicaMexicana: 1
