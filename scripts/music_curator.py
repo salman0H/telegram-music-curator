@@ -1,7 +1,6 @@
 import argparse
 import re
 import sys
-import time
 
 import state
 import telegram_client
@@ -76,37 +75,68 @@ def process_track(channel_id, message_id, audio, dry_run):
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+def build_summary_messages(items, bulk=False, limit=4000):
+    header = (f"📦 <b>Bulk Upload Summary ({len(items)} tracks)</b>\n" if bulk
+              else f"📊 <b>Curator Summary ({len(items)} tracks categorized)</b>\n")
+    messages = []
+    current = header
+    for message_id, name in items:
+        link = get_message_link(telegram_client.CHANNEL_ID, message_id)
+        # Bound a single label before escaping, keeping HTML tags intact.
+        label = escape_html(name[:500])
+        line = f"▪️ <a href='{link}'>{label}</a>"
+        if len(current) + len(line) + 1 > limit:
+            messages.append(current)
+            current = header
+        current += "\n" + line
+    if items:
+        messages.append(current)
+    return messages
+
+
+def send_summaries(items, bulk=False):
+    for text in build_summary_messages(items, bulk=bulk):
+        response = telegram_client.send_message(text)
+        if not response or not response.get("ok"):
+            return False
+        message_id = response.get("result", {}).get("message_id")
+        if message_id:
+            telegram_client.pin_chat_message(message_id)
+    return True
+
+
 def main():
-    start_time = time.time()
-    TIME_LIMIT = 240
-    
     args = parse_args()
     if not telegram_client.CHANNEL_ID:
         print("Error: MUSIC_CHANNEL_ID is not set in environment variables.")
         sys.exit(1)
 
-    print(f"Starting curator for channel ID: {telegram_client.CHANNEL_ID}")
-
     st = state.load_state()
-    print(f"Current offset from state: {st.get('offset')}")
-    
-    updates = telegram_client.get_updates(offset=st.get("offset"))
+    updates = list(st.get("pending_updates", []))
+    next_offset = st.get("offset")
+    # Telegram returns at most 100 updates per page. Keep a durable queue
+    # before acknowledging each page, so larger uploads can be counted safely.
+    while True:
+        page = telegram_client.get_updates(offset=next_offset)
+        if not page:
+            break
+        known_ids = {update.get("update_id") for update in updates}
+        updates.extend(update for update in page if update.get("update_id") not in known_ids)
+        next_offset = max(update["update_id"] for update in page) + 1
+        if not args.dry_run:
+            st["pending_updates"] = updates
+            st["offset"] = next_offset
+            state.save_state(st)
+        if len(page) < 100:
+            break
+
     if not updates:
         print("No new updates found from Telegram.")
         return
 
-    print(f"Fetched {len(updates)} new update(s) from Telegram.")
-
     processed_items = []
     failure_count = 0
-    next_offset = st.get("offset")
-    
     index = hashtag_index.load_index()
-
-    for update in updates:
-        update_id = update.get("update_id", 0)
-        if next_offset is None or update_id >= next_offset:
-            next_offset = update_id + 1
 
     # Extract all unprocessed audio posts
     new_audio_posts = []
@@ -118,79 +148,47 @@ def main():
 
     audio_count = len(new_audio_posts)
 
-    if audio_count > 20:
-        print(f"Bulk upload detected: {audio_count} tracks. Skipping individual tags and replies.")
-        summary_lines = [f"📦 <b>Bulk Upload Summary ({audio_count} tracks)</b>\n"]
-        
+    if audio_count > 100:
+        print(f"Bulk upload detected: {audio_count} tracks. Sending links only.")
         for message_id, audio in new_audio_posts:
             performer, title = extract_performer_title(audio)
-            track_name = f"{performer} - {title}"
-            safe_name = escape_html(track_name)
-            link = get_message_link(telegram_client.CHANNEL_ID, message_id)
-            
-            summary_lines.append(f"▪️ <a href='{link}'>{safe_name}</a>")
-            processed_items.append((message_id, track_name))
-            
-            if not args.dry_run:
+            processed_items.append((message_id, f"{performer} - {title}"))
+        if not args.dry_run and send_summaries(processed_items, bulk=True):
+            for message_id, _ in processed_items:
                 state.mark_processed(st, message_id)
-                
-        if not args.dry_run:
-            summary_text = "\n".join(summary_lines)
-            if len(summary_text) > 4000:
-                summary_text = summary_text[:4000] + "\n\n... [Truncated]"
-                
-            msg_response = telegram_client.send_message(summary_text)
-            if msg_response and msg_response.get("ok"):
-                sent_message_id = msg_response.get("result", {}).get("message_id")
-                if sent_message_id:
-                    telegram_client.pin_chat_message(sent_message_id)
-                    print("Bulk summary message sent and pinned.")
     else:
         for message_id, audio in new_audio_posts:
-            if time.time() - start_time > TIME_LIMIT:
-                print("Time limit reached, stopping early.")
-                break
-                
             print(f"Processing new audio message ID: {message_id}")
-            ok, performer, title, hashtags = process_track(telegram_client.CHANNEL_ID, message_id, audio, args.dry_run)
-            
+            ok, performer, title, hashtags = process_track(
+                telegram_client.CHANNEL_ID, message_id, audio, args.dry_run)
             if ok:
                 state.mark_processed(st, message_id)
-                track_name = f"{performer} - {title}"
-                processed_items.append((message_id, track_name))
-                print(f" -> Success: {track_name}")
-                
+                processed_items.append((message_id, f"{performer} - {title}"))
                 link = get_message_link(telegram_client.CHANNEL_ID, message_id)
                 for tag in hashtags:
                     hashtag_index.add_entry(index, tag, message_id, link, performer, title)
+                if not args.dry_run:
+                    # Preserve progress throughout long batches.
+                    hashtag_index.save_index(index)
+                    hashtag_index.write_summary(index)
+                    state.save_state(st)
             else:
-                print(f" -> Failed to process message ID: {message_id}")
                 failure_count += 1
-
         if processed_items and not args.dry_run:
-            summary_lines = [f"📊 <b>Curator Summary</b>\n\n✅ <b>{len(processed_items)}</b> tracks categorized:\n"]
-            for msg_id, t_name in processed_items:
-                link = get_message_link(telegram_client.CHANNEL_ID, msg_id)
-                safe_name = escape_html(t_name)
-                summary_lines.append(f"▪️ <a href='{link}'>{safe_name}</a>")
-            
-            summary_text = "\n".join(summary_lines)
-            if len(summary_text) > 4000:
-                summary_text = summary_text[:4000] + "\n\n... [Truncated]"
-                
-            msg_response = telegram_client.send_message(summary_text)
-            if msg_response and msg_response.get("ok"):
-                sent_message_id = msg_response.get("result", {}).get("message_id")
-                if sent_message_id:
-                    telegram_client.pin_chat_message(sent_message_id)
-                    print("Summary message sent and pinned in the channel.")
+            send_summaries(processed_items)
 
     st["offset"] = next_offset
     st["consecutive_failures"] = 0 if processed_items or failure_count == 0 else st.get("consecutive_failures", 0) + 1
 
     if not args.dry_run:
+        completed_ids = set(st.get("processed_ids", []))
+        st["pending_updates"] = [
+            update for update in updates
+            if any(message_id not in completed_ids
+                   for message_id, _ in telegram_client.iter_channel_audio_posts([update]))
+        ]
         state.save_state(st)
-        if processed_items and audio_count <= 20:
+        if processed_items and audio_count <= 100:
             hashtag_index.save_index(index)
             hashtag_index.write_summary(index)
 

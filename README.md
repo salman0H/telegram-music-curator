@@ -26,9 +26,9 @@ Music Curator reads new audio posts from a Telegram channel, looks up their meta
 | Audio without complete metadata | Artist/title extracted from an `Artist - Title` filename when possible |
 | Original caption cannot be edited | The same caption is sent as a reply to the audio |
 | Reply also fails | A standalone caption links back to the original post |
-| More than 20 new audio posts in one run | A pinned bulk summary; individual lookups and suggestions are skipped |
+| More than 100 new audio posts in one run | Links split across pinned messages; individual lookups and suggestions are skipped |
 
-A successful normal batch also gets a pinned summary. Previously processed message IDs and the Telegram update offset are persisted; a separate hashtag index produces `hashtag_summary.txt`.
+Batches of up to and including 100 tracks are fully categorized and recorded in `hashtag_summary.txt`, without the previous four-minute cutoff. Summary links are split across messages without truncation and pinned. Batches above 100 receive links only and do not add genre entries. Telegram update pages are collected into a persistent queue before processing; failed tracks remain queued for retry. A successful normal batch also gets a pinned summary. Previously processed message IDs and the Telegram update offset are persisted; a separate hashtag index produces `hashtag_summary.txt`.
 
 ## Recommendations
 
