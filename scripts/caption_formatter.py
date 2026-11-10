@@ -43,7 +43,7 @@ def _escape_html(text):
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_caption(performer, title, album=None, year=None, genres=None):
+def build_caption(performer, title, album=None, year=None, genres=None, recommendations=None):
     performer = _escape_html(performer or "Unknown Artist")
     title = _escape_html(title or "Unknown Title")
 
@@ -67,5 +67,11 @@ def build_caption(performer, title, album=None, year=None, genres=None):
     # above, but a very long album/title combo could still exceed it.
     if len(caption) > CAPTION_CHAR_LIMIT:
         caption = caption[: CAPTION_CHAR_LIMIT - 1] + "…"
+
+    # Only append complete escaped titles that fit the caption limit.
+    for name in recommendations or []:
+        suggestion = "\n\n" + _escape_html(name)
+        if len(caption) + len(suggestion) <= CAPTION_CHAR_LIMIT:
+            caption += suggestion
 
     return caption

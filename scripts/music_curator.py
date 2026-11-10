@@ -8,6 +8,7 @@ import telegram_client
 import itunes_client
 import caption_formatter
 import hashtag_index
+import recommendations
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -53,7 +54,8 @@ def process_track(channel_id, message_id, audio, dry_run):
             genres = match["genres"]
 
     hashtags = caption_formatter.genres_to_hashtags(genres)
-    caption = caption_formatter.build_caption(performer, title, album, year, genres)
+    suggestions = recommendations.recommend_tracks(performer, title)
+    caption = caption_formatter.build_caption(performer, title, album, year, genres, suggestions)
 
     if dry_run:
         return True, performer, title, hashtags
@@ -103,7 +105,7 @@ def main():
 
     for update in updates:
         update_id = update.get("update_id", 0)
-        if update_id >= next_offset:
+        if next_offset is None or update_id >= next_offset:
             next_offset = update_id + 1
 
     # Extract all unprocessed audio posts

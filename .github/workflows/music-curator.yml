@@ -40,8 +40,7 @@ jobs:
         env:
           MUSIC_BOT_TOKEN: ${{ secrets.MUSIC_BOT_TOKEN }}
           MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python scripts/music_curator.py --dry-run
