@@ -43,9 +43,9 @@ jobs:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            python scripts/music_curator.py --dry-run
+            python -u scripts/music_curator.py --dry-run
           else
-            python scripts/music_curator.py
+            python -u scripts/music_curator.py
           fi
 
       - name: Encrypt and commit state

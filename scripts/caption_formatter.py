@@ -68,10 +68,13 @@ def build_caption(performer, title, album=None, year=None, genres=None, recommen
     if len(caption) > CAPTION_CHAR_LIMIT:
         caption = caption[: CAPTION_CHAR_LIMIT - 1] + "…"
 
-    # Only append complete escaped titles that fit the caption limit.
+    heading = "\n\n🎧 <b>آهنگ‌های پیشنهادی</b>"
+    suggestions = []
     for name in recommendations or []:
-        suggestion = "\n\n" + _escape_html(name)
-        if len(caption) + len(suggestion) <= CAPTION_CHAR_LIMIT:
-            caption += suggestion
+        line = "\n• " + _escape_html(name)
+        if len(caption) + len(heading) + sum(map(len, suggestions)) + len(line) <= CAPTION_CHAR_LIMIT:
+            suggestions.append(line)
+    if suggestions:
+        caption += heading + "".join(suggestions)
 
     return caption

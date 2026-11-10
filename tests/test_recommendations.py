@@ -1,4 +1,7 @@
 import sys
+import io
+import urllib.error
+from contextlib import redirect_stdout
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -43,7 +46,7 @@ class RecommendationsTests(unittest.TestCase):
 
     def test_caption_escapes_and_limits_suggestions(self):
         caption = caption_formatter.build_caption('Artist', 'Title', recommendations=['A & B', '<Next>'])
-        self.assertTrue(caption.endswith('A &amp; B\n\n&lt;Next&gt;'))
+        self.assertTrue(caption.endswith('• A &amp; B\n• &lt;Next&gt;'))
         caption = caption_formatter.build_caption('Artist', 'Title', recommendations=['x' * 1024])
         self.assertLessEqual(len(caption), 1024)
 
@@ -57,3 +60,46 @@ class RecommendationsTests(unittest.TestCase):
         self.assertEqual(send.call_args.kwargs['reply_to_message_id'], 12)
         self.assertEqual(send.call_args.args[0], edit.call_args.args[1])
         self.assertTrue(send.call_args.args[0].endswith('Next Song'))
+
+
+class ProviderTests(unittest.TestCase):
+    @patch.object(rec.time, 'sleep')
+    @patch.object(rec.urllib.request, 'urlopen')
+    def test_timeout_retries_without_leaking_url(self, open_url, sleep):
+        open_url.side_effect = [TimeoutError('secret-key'), io.StringIO('{"ok": true}')]
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(rec._get_json('https://ws.audioscrobbler.com/?api_key=secret-key'), {'ok': True})
+        self.assertEqual(open_url.call_count, 2)
+        self.assertNotIn('secret-key', output.getvalue())
+        self.assertIn('Last.fm: TimeoutError', output.getvalue())
+
+    @patch.object(rec.time, 'sleep')
+    @patch.object(rec.urllib.request, 'urlopen')
+    def test_rate_limit_respects_retry_after(self, open_url, sleep):
+        open_url.side_effect = [urllib.error.HTTPError('hidden', 429, 'limited', {'Retry-After': '7'}, None),
+                                io.StringIO('{}')]
+        rec._get_json('https://musicbrainz.org/ws/2/recording/')
+        self.assertEqual(open_url.call_count, 2)
+        sleep.assert_any_call(7)
+
+    @patch.object(rec.time, 'sleep')
+    @patch.object(rec.urllib.request, 'urlopen')
+    def test_permanent_api_error_is_not_retried(self, open_url, sleep):
+        open_url.return_value = io.StringIO('{"error": 10}')
+        self.assertEqual(rec._get_json('https://ws.audioscrobbler.com/'), {'error': 10})
+        self.assertEqual(open_url.call_count, 1)
+
+    @patch.dict('os.environ', {'LASTFM_API_KEY': 'test'})
+    @patch.object(rec, '_resolve_recording', return_value='unknown-mbid')
+    @patch.object(rec, '_get_json', side_effect=[{'error': 6}, {'similartracks': {'track': [{'name': 'Next'}]}}])
+    def test_empty_mbid_result_retries_artist_title(self, get, resolve):
+        self.assertEqual(rec.recommend_tracks('Artist', 'Original'), ['Next'])
+        url = get.call_args.args[0]
+        self.assertNotIn('mbid=', url)
+        self.assertIn('artist=Artist', url)
+
+    def test_empty_or_oversized_suggestions_have_no_heading(self):
+        for suggestions in ([], ['x' * 1024]):
+            caption = caption_formatter.build_caption('Artist', 'Title', recommendations=suggestions)
+            self.assertNotIn('🎧', caption)

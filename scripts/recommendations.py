@@ -5,21 +5,53 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 
 _LAST_MB_REQUEST = 0.0
 USER_AGENT = "TelegramMusicCurator/1.0 (https://github.com/salman0H/telegram-music-curator)"
 
 
 def _get_json(url):
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=5) as response:
-            data = json.load(response)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        # Do not log URLs: Last.fm requests contain an API key.
-        print("[recommendations] provider unavailable; continuing without its results")
-        return {}
+    global _LAST_MB_REQUEST
+    provider = "MusicBrainz" if urllib.parse.urlsplit(url).hostname == "musicbrainz.org" else "Last.fm"
+    for attempt in range(3):
+        if provider == "MusicBrainz":
+            time.sleep(max(0, 1.1 - (time.monotonic() - _LAST_MB_REQUEST)))
+            _LAST_MB_REQUEST = time.monotonic()
+        retry_after = None
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.load(response)
+            if not isinstance(data, dict):
+                raise ValueError("invalid response shape")
+            code = data.get("error")
+            if not code:
+                return data
+            reason = f"API error {code}"
+            retryable = code in (8, 11, 16, 29)
+            if not retryable:
+                print(f"[recommendations] {provider}: {reason}; not retrying")
+                return data
+        except urllib.error.HTTPError as exc:
+            reason = f"HTTP {exc.code}"
+            retryable = exc.code in (429, 500, 502, 503, 504)
+            header = exc.headers.get("Retry-After") if exc.headers else None
+            exc.close()
+            if header and header.isdigit():
+                retry_after = min(int(header), 60)
+        except (OSError, ValueError) as exc:
+            # Exception strings and URLs can contain the key; log only the type.
+            reason = type(exc).__name__
+            retryable = True
+        if retryable and attempt < 2:
+            delay = retry_after if retry_after is not None else 2 ** (attempt + 1)
+            print(f"[recommendations] {provider}: {reason}; retry {attempt + 1}/2 in {delay}s")
+            time.sleep(delay)
+        else:
+            print(f"[recommendations] {provider}: {reason}; request failed after {attempt + 1} attempt(s)")
+            return {}
+    return {}
 
 
 def _normalize(value):
@@ -27,14 +59,10 @@ def _normalize(value):
 
 
 def _resolve_recording(artist, title):
-    global _LAST_MB_REQUEST
-    # MusicBrainz allows at most one request per second per application.
-    time.sleep(max(0, 1.1 - (time.monotonic() - _LAST_MB_REQUEST)))
     def quoted(value):
         return '"' + re.sub(r'([\\"])', r'\\\1', value) + '"'
     query = f"recording:{quoted(title)} AND artist:{quoted(artist)}"
     params = urllib.parse.urlencode({"query": query, "fmt": "json", "limit": 3})
-    _LAST_MB_REQUEST = time.monotonic()
     data = _get_json("https://musicbrainz.org/ws/2/recording/?" + params)
     for recording in data.get("recordings", []):
         credits = recording.get("artist-credit", [])
@@ -47,6 +75,8 @@ def _resolve_recording(artist, title):
 
 def recommend_tracks(artist, title, limit=3):
     """Return titles only; missing credentials or matches never block curation."""
+    if limit <= 0:
+        return []
     api_key = os.environ.get("LASTFM_API_KEY")
     if not api_key or not title or artist == "Unknown Artist":
         return []
@@ -57,11 +87,20 @@ def recommend_tracks(artist, title, limit=3):
         params["mbid"] = mbid
     else:
         params.update(artist=artist, track=title)
-    data = _get_json("https://ws.audioscrobbler.com/2.0/?" + urllib.parse.urlencode(params))
-    similar = data.get("similartracks", {})
-    tracks = similar.get("track", []) if isinstance(similar, dict) else []
-    if isinstance(tracks, dict):
-        tracks = [tracks]
+    def fetch_tracks(parameters):
+        data = _get_json("https://ws.audioscrobbler.com/2.0/?" + urllib.parse.urlencode(parameters))
+        similar = data.get("similartracks", {})
+        tracks = similar.get("track", []) if isinstance(similar, dict) else []
+        if isinstance(tracks, dict):
+            tracks = [tracks]
+        return tracks if isinstance(tracks, list) else []
+
+    tracks = fetch_tracks(params)
+    if mbid and not tracks:
+        print("[recommendations] Last.fm: no MBID results; trying artist/title")
+        params.pop("mbid")
+        params.update(artist=artist, track=title)
+        tracks = fetch_tracks(params)
     titles = []
     seen = {_normalize(title)}
     for track in tracks:
@@ -76,4 +115,5 @@ def recommend_tracks(artist, title, limit=3):
         titles.append(name)
         if len(titles) >= limit:
             break
+    print(f"[recommendations] {artist} — {title}: {len(titles)} suggested title(s)")
     return titles
