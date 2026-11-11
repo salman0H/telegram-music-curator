@@ -16,7 +16,7 @@ Python standard library. GitHub Actions. Encrypted state.
 
 ---
 
-Music Curator reads new audio posts from a Telegram channel, looks up their metadata, and builds a compact caption with up to three genre hashtags. Similar tracks appear in that same text as song titles only: no artist biographies, links, or explanations.
+Music Curator reads new audio posts from a Telegram channel, looks up their metadata, and builds a compact caption with up to three genre hashtags. Similar tracks appear in that same text as **artist — song title**: no artist biographies, links, or explanations.
 
 ## The experience
 
@@ -35,7 +35,7 @@ Batches of up to and including 100 tracks are fully categorized and recorded in 
 1. iTunes supplies the categorization metadata.
 2. [MusicBrainz](https://musicbrainz.org/doc/MusicBrainz_API) searches for an exact title/artist match and supplies a recording MBID where available. Requests carry an identifying User-Agent and are spaced at least 1.1 seconds apart.
 3. [Last.fm track.getSimilar](https://www.last.fm/api/show/track.getSimilar) retrieves similar recordings using that MBID, or artist/title when MusicBrainz has no match or the MBID yields no recommendations.
-4. The caption includes up to three distinct titles, excluding the source title. Titles appear as a bulleted list under **🎧 آهنگ‌های پیشنهادی**, are HTML-escaped, and are appended only when they fit Telegram's caption limit.
+4. The caption includes up to three distinct artist/title pairs, excluding the source recording. Titles appear as a bulleted list under **🎧 آهنگ‌های پیشنهادی**, are HTML-escaped, and are appended only when they fit Telegram's caption limit.
 
 Recommendations reflect Last.fm similarity data, rather than audio analysis or a guaranteed genre match. Missing credentials, unavailable services, or absent results leave the normal classification intact. MusicBrainz needs no API key for these public searches; Last.fm requires one.
 

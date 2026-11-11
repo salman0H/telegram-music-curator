@@ -16,11 +16,11 @@ class RecommendationsTests(unittest.TestCase):
     @patch.dict('os.environ', {'LASTFM_API_KEY': 'test'})
     @patch.object(rec, '_resolve_recording', return_value='recording-id')
     @patch.object(rec, '_get_json')
-    def test_similar_titles_only(self, get, resolve):
+    def test_similar_tracks_include_artist(self, get, resolve):
         get.return_value = {'similartracks': {'track': [
-            {'name': 'Original'}, {'name': 'Next'}, {'name': ' next '},
-            {'name': 'Other'}, {'name': 'Third'}, {'name': 'Fourth'}]}}
-        self.assertEqual(rec.recommend_tracks('Artist', 'Original'), ['Next', 'Other', 'Third'])
+            {'name': 'Original', 'artist': {'name': 'Artist'}}, {'name': 'Next', 'artist': {'name': 'Singer'}}, {'name': ' next ', 'artist': {'name': 'Singer'}},
+            {'name': 'Other', 'artist': {'name': 'Singer'}}, {'name': 'Third', 'artist': {'name': 'Band'}}, {'name': 'Fourth'}]}}
+        self.assertEqual(rec.recommend_tracks('Artist', 'Original'), ['Singer — Next', 'Singer — Other', 'Band — Third'])
         self.assertIn('mbid=recording-id', get.call_args.args[0])
 
     @patch.dict('os.environ', {}, clear=True)
@@ -92,9 +92,9 @@ class ProviderTests(unittest.TestCase):
 
     @patch.dict('os.environ', {'LASTFM_API_KEY': 'test'})
     @patch.object(rec, '_resolve_recording', return_value='unknown-mbid')
-    @patch.object(rec, '_get_json', side_effect=[{'error': 6}, {'similartracks': {'track': [{'name': 'Next'}]}}])
+    @patch.object(rec, '_get_json', side_effect=[{'error': 6}, {'similartracks': {'track': [{'name': 'Next', 'artist': {'name': 'Singer'}}]}}])
     def test_empty_mbid_result_retries_artist_title(self, get, resolve):
-        self.assertEqual(rec.recommend_tracks('Artist', 'Original'), ['Next'])
+        self.assertEqual(rec.recommend_tracks('Artist', 'Original'), ['Singer — Next'])
         url = get.call_args.args[0]
         self.assertNotIn('mbid=', url)
         self.assertIn('artist=Artist', url)

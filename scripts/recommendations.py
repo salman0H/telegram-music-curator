@@ -74,7 +74,7 @@ def _resolve_recording(artist, title):
 
 
 def recommend_tracks(artist, title, limit=3):
-    """Return titles only; missing credentials or matches never block curation."""
+    """Return artist — title labels; missing credentials or matches never block curation."""
     if limit <= 0:
         return []
     api_key = os.environ.get("LASTFM_API_KEY")
@@ -102,17 +102,20 @@ def recommend_tracks(artist, title, limit=3):
         params.update(artist=artist, track=title)
         tracks = fetch_tracks(params)
     titles = []
-    seen = {_normalize(title)}
+    seen = {(_normalize(artist), _normalize(title))}
     for track in tracks:
         name = track.get("name") if isinstance(track, dict) else None
-        if not isinstance(name, str):
+        credit = track.get("artist", {}) if isinstance(track, dict) else {}
+        performer = credit.get("name") if isinstance(credit, dict) else credit
+        if not isinstance(name, str) or not isinstance(performer, str):
             continue
         name = " ".join(name.split())
-        normalized = _normalize(name)
-        if not name or normalized in seen or len(name) > 150:
+        performer = " ".join(performer.split())
+        identity = (_normalize(performer), _normalize(name))
+        if not name or not performer or identity in seen or len(name) > 150 or len(performer) > 150:
             continue
-        seen.add(normalized)
-        titles.append(name)
+        seen.add(identity)
+        titles.append(f"{performer} — {name}")
         if len(titles) >= limit:
             break
     print(f"[recommendations] {artist} — {title}: {len(titles)} suggested title(s)")
