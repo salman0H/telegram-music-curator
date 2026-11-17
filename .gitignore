@@ -10,3 +10,6 @@ data/taste_memory.enc.lock
 
 .secrets/
 *music-memory-password*
+
+# Persist only the authenticated encrypted journal; never its key.
+!data/taste_memory.enc
