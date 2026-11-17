@@ -1,8 +1,8 @@
-Hashtag summary — 44 tags, 622 tagged songs
+Hashtag summary — 44 tags, 644 tagged songs
 ========================================
 #Rock: 115
-#Alternative: 86
-#Pop: 76
+#Alternative: 89
+#Pop: 87
 #Metal: 54
 #HipHop/rap: 52
 #Soundtrack: 32
@@ -11,10 +11,10 @@ Hashtag summary — 44 tags, 622 tagged songs
 #OriginalScore: 26
 #R&b/soul: 25
 #Electronic: 21
+#Farsi: 15
 #Country: 12
-#Farsi: 9
+#Indie: 7
 #Children'sMusic: 6
-#Indie: 5
 #DeathMetal/blackMetal: 4
 #JPop: 4
 #Worldwide: 4
