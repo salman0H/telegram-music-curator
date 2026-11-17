@@ -14,9 +14,15 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: music-curator-state
+  cancel-in-progress: false
+
 jobs:
   curate:
     runs-on: ubuntu-latest
+    env:
+      TASTE_MEMORY_PASSWORD: ${{ secrets.TASTE_MEMORY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +54,10 @@ jobs:
             python -u scripts/music_curator.py
           fi
 
+      - name: Verify encrypted choice memory
+        if: ${{ always() }}
+        run: python scripts/verify_taste_memory.py
+
       - name: Encrypt and commit state
         if: always()
         env:
@@ -67,6 +77,8 @@ jobs:
 
             git add music_state.enc
           fi
+
+          if [ -f data/taste_memory.enc ]; then git add data/taste_memory.enc; fi
 
           # Plaintext on purpose — just hashtag counts, nothing sensitive,
           # and being able to read it directly on GitHub without

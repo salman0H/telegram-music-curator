@@ -81,3 +81,55 @@ Dry run performs provider lookups and builds captions without sending messages o
 | `data/genre_hashtags.json` | Genre-to-hashtag mappings |
 
 The bot uses Telegram audio metadata and external catalogs; it does not listen to audio. Catalog coverage and incorrect upload metadata can affect classification and recommendations.
+
+
+## Optional private music-choice memory
+
+Set `TASTE_MEMORY_PASSWORD` locally or as an Actions secret to enable an
+independent authenticated encrypted journal at `data/taste_memory.enc`.
+Without the secret recording is disabled. Install `requirements.txt`.
+Use the same strong password in both repositories to merge their journals locally.
+No credentials or real choice history are included in this change.
+
+Each event retains channel/message identity, artist/title, original Telegram
+send time, Tehran time bucket, source, preference weight and musical mood.
+Direct admin selections published through Vibe Agent have weight **3**;
+channel observations have weight **1**. These are configurable design constants,
+not measured probabilities. Duplicate observations of the same channel message
+use the maximum weight. Reposting on a different message remains a new choice.
+Auto-pins and generated captions never count as personal likes.
+
+Mood is **unknown by default**. Optional `TASTE_OLLAMA_MODEL` enables the local
+Ollama service at `127.0.0.1:11434` to estimate known recordings' musical mood
+from artist/title, with confidence and provenance. This does not analyze audio
+or lyrics and model confidence is not calibrated accuracy. Unknown and low
+confidence results are excluded from averages. No personal emotional/mental
+state is inferred. `self_reported_mood` is reserved for explicit user input.
+Actions runners do not have your local Ollama service; classification there
+remains unknown. Missing historical send times stay unknown.
+
+Generate a private chart on your own device (SVG is decrypted, do not commit it):
+
+```sh
+python scripts/taste_memory.py /path/curator/taste_memory.enc /path/vibe/taste_memory.enc --chart /private/tmp/music-taste.svg
+```
+
+The chart shows source-weighted musical valence per Tehran calendar hour,
+classified/total coverage, and unknown observations. It is not a wellbeing chart.
+The CLI requires `TASTE_MEMORY_PASSWORD` in the environment. Authenticated
+Fernet encryption uses a fresh salt and scrypt key derivation; writes are atomic
+and local writers share an advisory lock. A wrong password/corrupt file never
+resets history; errors are logged without sensitive contents and the bot continues.
+Keep backups: if persistence fails, the main bot can acknowledge an update and
+that observation may need manual recovery. Retain the password separately.
+
+The existing bot architecture, Telegram publication, and music recommendations
+stay in place. This feature records choices; it does not modify recommendation
+ranking or editorial captions. Actions commits only this new encrypted journal;
+existing repository logs/state have their original privacy behavior. Local use
+can point both bots at the same absolute `TASTE_MEMORY_FILE`; separate Actions
+repositories retain independent files merged by the local chart command.
+
+For journals recorded on Actions, run the chart command with `--analyze`
+and `TASTE_OLLAMA_MODEL` on your own machine to fill unknown moods locally.
+No external model API is used by the new memory feature.

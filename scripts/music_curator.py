@@ -1,3 +1,4 @@
+import taste_memory
 import argparse
 import re
 import sys
@@ -129,6 +130,15 @@ def main():
             state.save_state(st)
         if len(page) < 100:
             break
+
+    if not args.dry_run:
+        for update in updates:
+            post = update.get("channel_post", {})
+            if any(True for _ in telegram_client.iter_channel_audio_posts([update])):
+                audio = post["audio"]
+                artist, title = extract_performer_title(audio)
+                taste_memory.record(post["chat"]["id"], post["message_id"], artist, title,
+                                    post.get("date"), "curator_channel")
 
     if not updates:
         print("No new updates found from Telegram.")

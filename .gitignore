@@ -2,3 +2,8 @@
 /scripts/music_history_session.session
 /scripts/__pycache__
 __pycache__/
+
+# Private local music-choice artifacts
+data/taste_memory.enc.lock
+*taste*.svg
+.taste-*
