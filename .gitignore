@@ -7,3 +7,6 @@ __pycache__/
 data/taste_memory.enc.lock
 *taste*.svg
 .taste-*
+
+.secrets/
+*music-memory-password*

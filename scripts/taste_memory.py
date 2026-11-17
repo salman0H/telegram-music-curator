@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import urllib.request
 
 SCHEMA = 1
-WEIGHTS = {'vibe_admin': 3, 'vibe_channel': 1, 'curator_channel': 1}
+WEIGHTS = {'vibe_admin': 3, 'vibe_channel': 1, 'curator_channel': 1, 'vibe_queue': 1}
 
 def _crypto(password, salt):
     from cryptography.fernet import Fernet

@@ -133,3 +133,7 @@ repositories retain independent files merged by the local chart command.
 For journals recorded on Actions, run the chart command with `--analyze`
 and `TASTE_OLLAMA_MODEL` on your own machine to fill unknown moods locally.
 No external model API is used by the new memory feature.
+
+Legacy Vibe editorial queue observations are retained as `vibe_queue` with
+weight 1 because their personal-selection provenance is unknown. Future admin
+uploads retain their timestamp and explicit admin source through queue retries.
