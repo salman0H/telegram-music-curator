@@ -83,159 +83,102 @@ Dry run performs provider lookups and builds captions without sending messages o
 The bot uses Telegram audio metadata and external catalogs; it does not listen to audio. Catalog coverage and incorrect upload metadata can affect classification and recommendations.
 
 
-## Optional private music-choice memory
 
-Set `TASTE_MEMORY_PASSWORD` locally or as an Actions secret to enable an
-independent authenticated encrypted journal at `data/taste_memory.enc`.
-Without the secret recording is disabled. Install `requirements.txt`.
-Use the same strong password in both repositories to merge their journals locally.
-No credentials or real choice history are included in this change.
 
-Each event retains channel/message identity, artist/title, original Telegram
-send time, Tehran time bucket, source, preference weight and musical mood.
-Direct admin selections published through Vibe Agent have weight **3**;
-channel observations have weight **1**. These are configurable design constants,
-not measured probabilities. Duplicate observations of the same channel message
-use the maximum weight. Reposting on a different message remains a new choice.
-Auto-pins and generated captions never count as personal likes.
+## Offline weighted-tag memory (current default)
 
-Mood is **unknown by default**. Optional `TASTE_OLLAMA_MODEL` enables the local
-Ollama service at `127.0.0.1:11434` to estimate known recordings' musical mood
-from artist/title, with confidence and provenance. This does not analyze audio
-or lyrics and model confidence is not calibrated accuracy. Unknown and low
-confidence results are excluded from averages. No personal emotional/mental
-state is inferred. `self_reported_mood` is reserved for explicit user input.
-Actions runners do not have your local Ollama service; classification there
-remains unknown. Missing historical send times stay unknown.
+The memory/analysis feature runs locally **without Ollama, an agent, a model key
+or network requests**. The old metadata-to-Ollama analysis path has been removed;
+`TASTE_OLLAMA_MODEL` no longer enables it. Vibe Agent's existing Groq poetry/caption
+feature remains separate and unchanged; it still uses its existing inputs.
 
-Generate a private chart on your own device (SVG is decrypted, do not commit it):
+### Recording and basic analysis
+
+Set `TASTE_MEMORY_PASSWORD` locally or as an Actions secret to enable the
+independent authenticated encrypted journal `data/taste_memory.enc`. Install
+`requirements.txt`. Without the password, recording is disabled.
+Raw music metadata stays inside the encrypted journal. Owner-only local key
+files belong in `.secrets/`, which is ignored; never publish the password.
+
+Existing hashtags and Curator genre tags are normalized against the fixed
+allowlist in `scripts/tag_profile.py`. Source-tag observations retain provenance
+inside the journal. Only explicit sad/happy/neutral/calm/energetic tags and their
+listed Persian aliases inform deterministic affect rules. Dark, metal, chill,
+ambient and similar style tags remain descriptive; they do not establish the
+listener's feelings. No emotion is guessed from a title, artist, genre or hour.
+Conflicting sad/happy tags remain mixed. Missing valence or energy stays unknown.
+
+Direct admin-selected Vibe posts have preference weight 3; channel observations
+and legacy queue observations have weight 1. Re-observing the same channel/message
+uses max source weight and counts each canonical tag once, even if both bots
+observe it. A raw genre frequency is not a psychological score or probability.
+Mamdani fuzzy tools remain available for explicit valence/energy evidence, but
+the default chart/report is the simpler deterministic weighted-tag summary.
+New observations retain rule/version provenance inside authenticated encryption.
+
+The original Telegram send time is retained with timezone Asia/Tehran. Basic
+charts group by calendar hour. Broad day buckets and circular time memberships
+are descriptive grouping tools; time never changes a song's valence.
+
+### Local outputs, no agent transmission
 
 ```sh
-python scripts/taste_memory.py /path/curator/taste_memory.enc /path/vibe/taste_memory.enc --chart /private/tmp/music-taste.svg
+python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --chart /private/tmp/music-tags.svg
+python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --report /private/tmp/agent-summary.txt --history /private/path/aggregate_history.enc
 ```
 
-The chart shows source × confidence weighted Mamdani musical valence per Tehran calendar hour,
-classified/total coverage, and unknown observations. It is not a wellbeing chart.
-The CLI requires `TASTE_MEMORY_PASSWORD` in the environment. Authenticated
-Fernet encryption uses a fresh salt and scrypt key derivation; writes are atomic
-and local writers share an advisory lock. A wrong password/corrupt file never
-resets history; errors are logged without sensitive contents and the bot continues.
-Keep backups: if persistence fails, the main bot can acknowledge an update and
-that observation may need manual recovery. Retain the password separately.
+Both commands read `TASTE_MEMORY_PASSWORD` from the environment. `--analyze`
+now only recomputes explicit-tag rules offline; it never calls a model.
+The plaintext report is a deliberate export with owner-only permissions, not
+a decrypted record dump. It includes only allowlisted tag totals, source-weight
+rules, coverage and coarse time buckets; buckets under three events are suppressed.
+Track/artist names, captions, links, exact timestamps, identifiers, keys and
+ciphertext are excluded by construction. Aggregate reports still contain private
+preferences; keep exported reports out of Git. No external agent is connected or
+automatically called by this feature.
 
-The existing bot architecture, Telegram publication, and music recommendations
-stay in place. This feature records choices; it does not modify recommendation
-ranking or editorial captions. Actions commits only this new encrypted journal;
-existing repository logs/state have their original privacy behavior. Local use
-can point both bots at the same absolute `TASTE_MEMORY_FILE`; separate Actions
-repositories retain independent files merged by the local chart command.
+The optional `--history` file retains aggregate-only snapshots under the same
+authenticated encryption. Unchanged snapshots are not duplicated. The plaintext
+export includes at most the latest six snapshots for longitudinal comparison;
+all snapshots remain in encrypted history. Overlapping snapshots are not new
+independent evidence and must not be counted as extra observations.
 
-For journals recorded on Actions, run the chart command with `--analyze`
-and `TASTE_OLLAMA_MODEL` on your own machine to fill unknown moods locally.
-No external model API is used by the new memory feature.
+Prepared templates in `prompts/aggregate_review.txt` and
+`prompts/psychological_reflection.txt` accept only the aggregate text report.
+They require competing explanations, uncertainty, missing-coverage disclosure and
+non-leading questions. Psychological reflection must distinguish music patterns,
+explicit self-report and tentative interpretation; it must not diagnose or equate
+musical sadness with the listener's mental state. Prompt wording reduces leading
+framing but cannot guarantee an unbiased model or clinical validity.
 
-Legacy Vibe editorial queue observations are retained as `vibe_queue` with
-weight 1 because their personal-selection provenance is unknown. Future admin
-uploads retain their timestamp and explicit admin source through queue retries.
-
-
-## Reproducible fuzzy music analysis
-
-Both bots share the same versioned `fuzzy_mood.py` algorithm. This is a
-**Mamdani min–max system with centroid defuzzification**, not a trained emotion
-recognizer or a measurement of personal wellbeing. No additional dependency is
-needed and the existing bot routing/encrypted journal format remains compatible.
-
-The valence/arousal framework is established in music-emotion research, e.g.
-[DEAM](https://cvml.unige.ch/databases/DEAM/) and its
-[benchmark paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC5345802/).
-Our metadata-model `energy` field is only a proxy for perceived musical arousal;
-it is not a validated acoustic arousal measurement. DEAM was not used to train,
-tune or validate this implementation; dataset use needs its own license review.
-
-### Inputs, memberships and rules
-
-- Inputs: musical valence `v ∈ [-1,1]`, energy `e ∈ [0,1]`, and upstream
-  model confidence `c ∈ [0,1]`. Missing/non-finite/invalid inputs or `c < 0.7`
-  cause abstention. No unknown recording is silently assigned neutral mood.
-- On `x ∈ [-1,1]`, membership functions are `negative=max(0,-x)`,
-  `neutral=1-abs(x)`, `positive=max(0,x)`. Valence uses `x=v`; energy uses
-  `x=2e-1`. Each three-set partition sums to one.
-- The nine rules are the Cartesian product of sad/neutral/happy and
-  calm/moderate/energetic. For example: IF valence is sad AND energy is calm,
-  THEN musical mood is sad_calm. Every active rule and its activation are retained.
-- AND/implication uses minimum; aggregation uses maximum. The two output
-  coordinates retain their respective linguistic terms. A 401-point
-  trapezoidal centroid converts the aggregated output sets to numerical scores.
-  These are fuzzy indices, not the original input scale or validated human ratings.
-- A membership degree expresses compatibility with a linguistic set. It is
-  **not a probability**, and model self-confidence is not calibrated accuracy.
-
-New/updated observations include `fuzzy_music` (method version, active rules,
-memberships, scores) and circular `time_memberships`. Existing encrypted files
-remain readable; charts recompute derived fuzzy values without requiring migration.
-Local `--analyze` also refreshes derived fields after optional Ollama estimation.
-
-Time memberships use circular triangular windows centered at 03:00, 09:00,
-15:00 and 21:00 in recorded Tehran time, each with radius six hours. Thus
-midnight belongs equally to evening and night instead of jumping abruptly.
-Time groups choices; it never changes a recording's valence or infers your mood.
-
-### Aggregation and honest uncertainty
-
-Within each calendar-hour group, each classified recording has analysis weight
-`source_weight × model_confidence`. Source priority remains admin-selected Vibe
-3, other observations 1; observations of the same channel/message use max source
-weight rather than adding duplicate evidence. The hourly fuzzy index is the
-weighted mean of defuzzified musical-valence scores. Charts show classified/total
-coverage and Kish effective sample size `(sum(w))² / sum(w²)`.
-
-Kish n_eff describes unequal weight concentration; it does not establish
-independence, statistical significance, confidence intervals or psychological
-validity. Memberships, thresholds, source weights and rules are heuristic choices.
-The pipeline does not claim that fuzzy processing improves prediction accuracy.
-No accuracy scores are fabricated from unlabelled listening history.
-
-### Validate before trusting predictions
+### Verification and limitations
 
 ```sh
 python -m unittest discover -s tests -v
-python scripts/evaluate_mood.py /private/path/held-out-labels.json
+python scripts/verify_taste_memory.py
 ```
 
-The evaluation file is a JSON array of objects with `model_valence`,
-`human_valence` (both -1 to 1), `energy` (0 to 1) and `confidence` (0 to 1).
-Human labels describe the **music**, not the listener. Collect your labels before
-viewing predictions; freeze the model/rules and evaluate on separate recordings
-and preferably held-out artists. Start with at least 50 diverse judgements for
-an exploratory comparison, not a statistical guarantee. Report coverage and MAE
-for both raw-model and fuzzy scores on the same accepted items. Lower MAE is
-better; if fuzzy is worse, keep the raw baseline and revise the rules using a
-separate development set. Self-reported personal mood needs a distinct target
-and its own evaluation; it is never manufactured from music choices.
+Writes use Fernet authenticated encryption with scrypt-derived keys, fresh salts,
+atomic replacement and local locking. Wrong passwords/corrupt files do not reset
+history. Recording failure does not stop normal bot processing, so failed records
+may need recovery. Actions explicitly persists the encrypted journal, not its key.
+Separate repositories retain separate journals; the local command merges them.
+Historical records without tags remain unknown; old model guesses are not used
+as observed tags. Existing non-memory bot logs retain their prior privacy behavior.
 
-Tests cover analytic centroid reference values (shoulders ±2/3, center zero),
-partition coverage, symmetry, monotonicity, overlapping rules, invalid inputs,
-midnight continuity, weighting/n_eff and baseline evaluation. These establish
-implementation behavior, **not empirical validity of music-emotion recognition**.
+### Auditable methods
 
-### Method references
+Mamdani min implication/max aggregation and 401-point centroid defuzzification,
+circular time membership and the held-out MAE evaluation tool remain in
+`scripts/fuzzy_mood.py` and `scripts/evaluate_mood.py`. They do not validate a
+psychological conclusion. Model confidence is not calibrated probability;
+unequal-weight effective sample size is not a confidence interval.
 
-- [MathWorks: fuzzy inference process](https://www.mathworks.com/help/fuzzy/fuzzy-inference-process.html)
-  — fuzzification, rules, implication, aggregation and defuzzification.
-- [MathWorks: centroid defuzzification](https://www.mathworks.com/help/fuzzy/defuzzification-methods.html)
-  — center of gravity of the aggregated output set.
-- [SciPy: effective number of datapoints](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html)
-  — unequal-weight effective sample size formula. This project computes only
-  that diagnostic; it does not use KDE or claim independent observations.
+- [Mamdani inference process](https://www.mathworks.com/help/fuzzy/fuzzy-inference-process.html)
+- [Centroid defuzzification](https://www.mathworks.com/help/fuzzy/defuzzification-methods.html)
+- [Music-emotion benchmark DEAM](https://cvml.unige.ch/databases/DEAM/)
+- [Unequal-weight effective sample size](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html)
 
-### Telegram collection scope
-
-This feature records the owner's music choices. It does not turn either bot
-into an undisclosed collector of third-party personal profiles. A user-account
-client (MTProto) is different from a Bot API bot; client authorization does not
-expand what content the account is entitled to access. Telegram limits AI data
-harvesting and requires explicit, informed, continued consent in the specific
-context for its stated exception. Group membership or public availability alone
-is not that consent. See [content licensing terms](https://telegram.org/tos/content-licensing)
-and [Bot FAQ](https://core.telegram.org/bots/faq#what-messages-will-my-bot-get).
+The feature records the owner's selected music. It does not authorize undisclosed
+collection of other people's personal profiles; see
+[Telegram content terms](https://telegram.org/tos/content-licensing).

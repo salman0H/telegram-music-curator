@@ -62,7 +62,7 @@ class MemoryTests(unittest.TestCase):
         estimate = dict(label='happy', valence=.5, energy=.8, confidence=.9,
                         tags=['upbeat'], basis='test_fixture', model='test')
         with patch.object(memory, 'classify', return_value=estimate):
-            self.assertTrue(memory.record('c', 9, 'Artist', 'Song', 1735689600, 'vibe_admin'))
+            self.assertTrue(memory.record('c', 9, 'Artist', 'Song', 1735689600, 'vibe_admin', tags=['happy','energetic']))
         event = memory.read_store(self.path, os.environ['TASTE_MEMORY_PASSWORD'])['events']['c:9']
         self.assertEqual(event['fuzzy_music']['method'], 'mamdani-music-v1')
         self.assertEqual(event['fuzzy_music']['status'], 'estimated')
@@ -71,10 +71,11 @@ class MemoryTests(unittest.TestCase):
         self.assertAlmostEqual(sum(event['time_memberships'].values()), 1)
         self.assertIsNone(event['self_reported_mood'])
 
-    @patch('taste_memory.urllib.request.urlopen')
+    @patch('urllib.request.urlopen')
     def test_invalid_local_model_output_is_unknown(self, request):
         request.return_value.__enter__.return_value.read.return_value = json.dumps({'response': json.dumps({'label':'happy', 'valence': 2, 'energy': 1, 'confidence': 1})}).encode()
         with patch.dict(os.environ, {'TASTE_OLLAMA_MODEL': 'local-model'}):
             self.assertEqual(memory.classify('a','t')['label'], 'unknown')
+        request.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

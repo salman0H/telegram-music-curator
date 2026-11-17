@@ -54,6 +54,8 @@ def process_track(channel_id, message_id, audio, dry_run):
             genres = match["genres"]
 
     hashtags = caption_formatter.genres_to_hashtags(genres)
+    if not dry_run:
+        taste_memory.record(channel_id, message_id, performer, title, None, "curator_channel", tags=hashtags)
     suggestions = recommendations.recommend_tracks(performer, title)
     caption = caption_formatter.build_caption(performer, title, album, year, genres, suggestions)
 
@@ -138,7 +140,7 @@ def main():
                 audio = post["audio"]
                 artist, title = extract_performer_title(audio)
                 taste_memory.record(post["chat"]["id"], post["message_id"], artist, title,
-                                    post.get("date"), "curator_channel")
+                                    post.get("date"), "curator_channel", tags=taste_memory.extract_tags(post.get("caption", "")))
 
     if not updates:
         print("No new updates found from Telegram.")
