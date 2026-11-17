@@ -58,6 +58,19 @@ class MemoryTests(unittest.TestCase):
         memory.chart(merged, output)
         self.assertIn('0/1 classified', output.read_text())
         self.assertIn('NOT a measure', output.read_text())
+    def test_fuzzy_explanation_survives_authenticated_encryption(self):
+        estimate = dict(label='happy', valence=.5, energy=.8, confidence=.9,
+                        tags=['upbeat'], basis='test_fixture', model='test')
+        with patch.object(memory, 'classify', return_value=estimate):
+            self.assertTrue(memory.record('c', 9, 'Artist', 'Song', 1735689600, 'vibe_admin'))
+        event = memory.read_store(self.path, os.environ['TASTE_MEMORY_PASSWORD'])['events']['c:9']
+        self.assertEqual(event['fuzzy_music']['method'], 'mamdani-music-v1')
+        self.assertEqual(event['fuzzy_music']['status'], 'estimated')
+        self.assertGreater(event['fuzzy_music']['valence_score'], 0)
+        self.assertTrue(event['fuzzy_music']['rules'])
+        self.assertAlmostEqual(sum(event['time_memberships'].values()), 1)
+        self.assertIsNone(event['self_reported_mood'])
+
     @patch('taste_memory.urllib.request.urlopen')
     def test_invalid_local_model_output_is_unknown(self, request):
         request.return_value.__enter__.return_value.read.return_value = json.dumps({'response': json.dumps({'label':'happy', 'valence': 2, 'energy': 1, 'confidence': 1})}).encode()

@@ -114,7 +114,7 @@ Generate a private chart on your own device (SVG is decrypted, do not commit it)
 python scripts/taste_memory.py /path/curator/taste_memory.enc /path/vibe/taste_memory.enc --chart /private/tmp/music-taste.svg
 ```
 
-The chart shows source-weighted musical valence per Tehran calendar hour,
+The chart shows source × confidence weighted Mamdani musical valence per Tehran calendar hour,
 classified/total coverage, and unknown observations. It is not a wellbeing chart.
 The CLI requires `TASTE_MEMORY_PASSWORD` in the environment. Authenticated
 Fernet encryption uses a fresh salt and scrypt key derivation; writes are atomic
@@ -137,3 +137,105 @@ No external model API is used by the new memory feature.
 Legacy Vibe editorial queue observations are retained as `vibe_queue` with
 weight 1 because their personal-selection provenance is unknown. Future admin
 uploads retain their timestamp and explicit admin source through queue retries.
+
+
+## Reproducible fuzzy music analysis
+
+Both bots share the same versioned `fuzzy_mood.py` algorithm. This is a
+**Mamdani min–max system with centroid defuzzification**, not a trained emotion
+recognizer or a measurement of personal wellbeing. No additional dependency is
+needed and the existing bot routing/encrypted journal format remains compatible.
+
+The valence/arousal framework is established in music-emotion research, e.g.
+[DEAM](https://cvml.unige.ch/databases/DEAM/) and its
+[benchmark paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC5345802/).
+Our metadata-model `energy` field is only a proxy for perceived musical arousal;
+it is not a validated acoustic arousal measurement. DEAM was not used to train,
+tune or validate this implementation; dataset use needs its own license review.
+
+### Inputs, memberships and rules
+
+- Inputs: musical valence `v ∈ [-1,1]`, energy `e ∈ [0,1]`, and upstream
+  model confidence `c ∈ [0,1]`. Missing/non-finite/invalid inputs or `c < 0.7`
+  cause abstention. No unknown recording is silently assigned neutral mood.
+- On `x ∈ [-1,1]`, membership functions are `negative=max(0,-x)`,
+  `neutral=1-abs(x)`, `positive=max(0,x)`. Valence uses `x=v`; energy uses
+  `x=2e-1`. Each three-set partition sums to one.
+- The nine rules are the Cartesian product of sad/neutral/happy and
+  calm/moderate/energetic. For example: IF valence is sad AND energy is calm,
+  THEN musical mood is sad_calm. Every active rule and its activation are retained.
+- AND/implication uses minimum; aggregation uses maximum. The two output
+  coordinates retain their respective linguistic terms. A 401-point
+  trapezoidal centroid converts the aggregated output sets to numerical scores.
+  These are fuzzy indices, not the original input scale or validated human ratings.
+- A membership degree expresses compatibility with a linguistic set. It is
+  **not a probability**, and model self-confidence is not calibrated accuracy.
+
+New/updated observations include `fuzzy_music` (method version, active rules,
+memberships, scores) and circular `time_memberships`. Existing encrypted files
+remain readable; charts recompute derived fuzzy values without requiring migration.
+Local `--analyze` also refreshes derived fields after optional Ollama estimation.
+
+Time memberships use circular triangular windows centered at 03:00, 09:00,
+15:00 and 21:00 in recorded Tehran time, each with radius six hours. Thus
+midnight belongs equally to evening and night instead of jumping abruptly.
+Time groups choices; it never changes a recording's valence or infers your mood.
+
+### Aggregation and honest uncertainty
+
+Within each calendar-hour group, each classified recording has analysis weight
+`source_weight × model_confidence`. Source priority remains admin-selected Vibe
+3, other observations 1; observations of the same channel/message use max source
+weight rather than adding duplicate evidence. The hourly fuzzy index is the
+weighted mean of defuzzified musical-valence scores. Charts show classified/total
+coverage and Kish effective sample size `(sum(w))² / sum(w²)`.
+
+Kish n_eff describes unequal weight concentration; it does not establish
+independence, statistical significance, confidence intervals or psychological
+validity. Memberships, thresholds, source weights and rules are heuristic choices.
+The pipeline does not claim that fuzzy processing improves prediction accuracy.
+No accuracy scores are fabricated from unlabelled listening history.
+
+### Validate before trusting predictions
+
+```sh
+python -m unittest discover -s tests -v
+python scripts/evaluate_mood.py /private/path/held-out-labels.json
+```
+
+The evaluation file is a JSON array of objects with `model_valence`,
+`human_valence` (both -1 to 1), `energy` (0 to 1) and `confidence` (0 to 1).
+Human labels describe the **music**, not the listener. Collect your labels before
+viewing predictions; freeze the model/rules and evaluate on separate recordings
+and preferably held-out artists. Start with at least 50 diverse judgements for
+an exploratory comparison, not a statistical guarantee. Report coverage and MAE
+for both raw-model and fuzzy scores on the same accepted items. Lower MAE is
+better; if fuzzy is worse, keep the raw baseline and revise the rules using a
+separate development set. Self-reported personal mood needs a distinct target
+and its own evaluation; it is never manufactured from music choices.
+
+Tests cover analytic centroid reference values (shoulders ±2/3, center zero),
+partition coverage, symmetry, monotonicity, overlapping rules, invalid inputs,
+midnight continuity, weighting/n_eff and baseline evaluation. These establish
+implementation behavior, **not empirical validity of music-emotion recognition**.
+
+### Method references
+
+- [MathWorks: fuzzy inference process](https://www.mathworks.com/help/fuzzy/fuzzy-inference-process.html)
+  — fuzzification, rules, implication, aggregation and defuzzification.
+- [MathWorks: centroid defuzzification](https://www.mathworks.com/help/fuzzy/defuzzification-methods.html)
+  — center of gravity of the aggregated output set.
+- [SciPy: effective number of datapoints](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html)
+  — unequal-weight effective sample size formula. This project computes only
+  that diagnostic; it does not use KDE or claim independent observations.
+
+### Telegram collection scope
+
+This feature records the owner's music choices. It does not turn either bot
+into an undisclosed collector of third-party personal profiles. A user-account
+client (MTProto) is different from a Bot API bot; client authorization does not
+expand what content the account is entitled to access. Telegram limits AI data
+harvesting and requires explicit, informed, continued consent in the specific
+context for its stated exception. Group membership or public availability alone
+is not that consent. See [content licensing terms](https://telegram.org/tos/content-licensing)
+and [Bot FAQ](https://core.telegram.org/bots/faq#what-messages-will-my-bot-get).

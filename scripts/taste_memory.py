@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import urllib.request
+from fuzzy_mood import infer, time_memberships, summarize
 
 SCHEMA = 1
 WEIGHTS = {'vibe_admin': 3, 'vibe_channel': 1, 'curator_channel': 1, 'vibe_queue': 1}
@@ -116,6 +117,8 @@ def record(channel, message_id, artist, title, sent_at, source):
                 event['sources'].append(source)
             # Same channel post observed by both bots gets max weight, never summed.
             event['preference_weight'] = max(WEIGHTS[s] for s in event['sources'])
+            event['fuzzy_music'] = infer(event['music_mood'])
+            event['time_memberships'] = time_memberships(event['local_time'])
             write_store(path, password, store)
             if read_store(path, password) != store:
                 raise ValueError('Journal readback differs from written data')
@@ -149,22 +152,21 @@ def chart(store, output):
             continue
         hour = event['local_time'][:13]
         groups.setdefault(hour, []).append(event)
-    lines = ['<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="%d">' % (160 + 44 * len(groups)),
+    lines = ['<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="%d">' % (160 + 44 * len(groups)),
              '<rect width="100%" height="100%" fill="#101827"/>',
              '<g fill="#e5e7eb" font-family="sans-serif" font-size="14">',
              '<text x="24" y="30">Selected music mood over time · Asia/Tehran · NOT a measure of personal wellbeing</text>',
-             '<text x="24" y="56">Sad -1 ←                        0                        → +1 Happy · grey = unknown</text>']
+             '<text x="24" y="56">Mamdani musical valence: sad ← 0 → happy · grey = unknown · confidence-weighted</text>']
     for i, (hour, events) in enumerate(sorted(groups.items())):
         y = 100 + i * 44
-        known = [e for e in events if e['music_mood']['valence'] is not None]
-        denom = sum(e['preference_weight'] for e in known)
-        value = sum(e['music_mood']['valence'] * e['preference_weight'] for e in known) / denom if denom else None
+        summary = summarize(events)
+        value = summary['valence']
         lines += [f'<text x="24" y="{y}">{html.escape(hour.replace("T", " "))}</text>',
                   f'<path d="M260 {y-5} H660" stroke="#4b5563"/>']
         x = 460 + (value or 0) * 200
         color = '#9ca3af' if value is None else '#a78bfa' if value < 0 else '#34d399'
         lines += [f'<circle cx="{x:.1f}" cy="{y-5}" r="7" fill="{color}"/>',
-                  f'<text x="690" y="{y}">{len(known)}/{len(events)} classified; weighted mean {value if value is None else round(value, 2)}</text>']
+                  f'<text x="690" y="{y}">{summary['classified']}/{len(events)} classified; fuzzy {value if value is None else round(value, 2)}; n_eff {summary['effective_sample_size']:.1f}</text>']
     lines += ['</g></svg>']
     Path(output).write_text('\n'.join(lines))
     os.chmod(output, 0o600)
@@ -191,6 +193,8 @@ if __name__ == '__main__':
                 for event in value['events'].values():
                     if event['music_mood']['label'] == 'unknown':
                         event['music_mood'] = classify(event['artist'], event['title'])
+                    event['fuzzy_music'] = infer(event['music_mood'])
+                    event['time_memberships'] = time_memberships(event['local_time'])
                 write_store(path, password, value)
             stores.append(value)
     chart(merge(stores), args.chart)
