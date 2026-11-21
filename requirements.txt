@@ -1,2 +1,5 @@
 
 cryptography>=44,<47
+
+# Local JPEG chart export
+Pillow>=11,<13

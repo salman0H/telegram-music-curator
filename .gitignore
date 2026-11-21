@@ -18,3 +18,10 @@ data/taste_memory.enc.lock
 agent-summary*.txt
 aggregate_history.enc
 aggregate_history.enc.lock
+
+# Private exported charts
+music-vibe*.jpg
+music-tags*.jpg
+
+music-fuzzy*.jpg
+fuzzy-summary*.json

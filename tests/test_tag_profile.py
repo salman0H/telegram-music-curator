@@ -6,6 +6,9 @@ import os
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from tag_profile import canonical,from_tags,profile,report_text
 class TagTests(unittest.TestCase):
+    def test_common_genre_spellings_survive_normalization(self):
+        self.assertEqual(canonical(['#Hip-Hop/Rap', 'R&B/Soul', 'Alternative Rock']), ['alternative','hiphop','rnb'])
+
     def test_style_is_not_emotion(self):
         self.assertEqual(from_tags(['#Dark','#Metal'])['label'],'unknown')
         self.assertIsNone(from_tags(['#Chill'])['energy'])

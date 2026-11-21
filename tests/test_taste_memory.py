@@ -28,6 +28,13 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(event['time_bucket'], 'night')
         self.assertEqual(event['music_mood']['label'], 'unknown')
         self.assertIsNone(event['self_reported_mood'])
+    def test_unmapped_raw_hashtag_retained_only_in_encrypted_memory(self):
+        from tag_profile import report_text
+        self.assertTrue(memory.record('c', 8, 'Artist', 'Song', None, 'vibe_admin', tags=['#PRIVATE_UNMAPPED_TAG']))
+        value=memory.read_store(self.path, os.environ['TASTE_MEMORY_PASSWORD'])
+        self.assertEqual(value['events']['c:8']['raw_tag_observations']['vibe_admin'], ['#PRIVATE_UNMAPPED_TAG'])
+        self.assertNotIn('PRIVATE_UNMAPPED_TAG', report_text(value))
+
     def test_wrong_password_and_tampering_preserve_file(self):
         memory.record('c', 1, 'a', 't', None, 'vibe_admin')
         original = self.path.read_bytes()

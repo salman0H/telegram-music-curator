@@ -8,9 +8,12 @@ VERSION = 'weighted-tags-v1'
 STYLE = ('dark','ambient','chill','dreamy','instrumental','soundtrack','classical','indie',
          'alternative','pop','rock','punk','grunge','metal','hiphop','rap','trap','rnb',
          'soul','funk','jazz','blues','electronic','folk','acoustic','country','persian',
-         'persianpop','persiantraditional','persianrock','persianrap','persianalternative')
+         'persianpop','persiantraditional','persianrock','persianrap','persianalternative',
+         'dance','singersongwriter','newage','children','world','reggae','latin','kpop','gospel','holiday','comedy')
 ALIASES = {name:name for name in STYLE}
-ALIASES.update({'sad':'sad','غمگین':'sad','غم':'sad','happy':'happy','شاد':'happy',
+ALIASES.update({'hiphoprap':'hiphop','rbsoul':'rnb','alternativerock':'alternative',
+                'progressiverock':'rock','hardrock':'rock','heavymetal':'metal','dancemusic':'dance',
+                'sad':'sad','غمگین':'sad','غم':'sad','happy':'happy','شاد':'happy',
                 'neutral':'neutral','خنثی':'neutral','calm':'calm','آرام':'calm',
                 'energetic':'energetic','پرانرژی':'energetic'})
 SAFE = frozenset(ALIASES.values())
@@ -22,7 +25,7 @@ def extract_tags(text):
 
 def canonical(tags):
     return sorted({ALIASES[key] for tag in tags if isinstance(tag,str)
-                   for key in [tag.strip().lstrip('#').casefold().replace('_','').replace('\u200c','')]
+                   for key in [re.sub(r'[^\w]+', '', tag.strip().lstrip('#').casefold()).replace('_','').replace('\u200c','')]
                    if key in ALIASES})
 
 def from_tags(tags):

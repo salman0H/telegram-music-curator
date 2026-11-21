@@ -89,6 +89,8 @@ def record(channel, message_id, artist, title, sent_at, source, tags=None):
             event['preference_weight'] = max(WEIGHTS[s] for s in event['sources'])
             observations = event.setdefault('tag_observations', {})
             if tags is not None:
+                raw = event.setdefault('raw_tag_observations', {})
+                raw[source] = sorted(set(raw.get(source, []) + [tag[:100] for tag in tags if isinstance(tag, str)][:100]))
                 observations[source] = canonical(observations.get(source, []) + list(tags))
             event['music_mood'] = from_tags([tag for values in observations.values() for tag in values])
             event['fuzzy_music'] = infer(event['music_mood'])
@@ -122,6 +124,11 @@ def merge(stores):
     return result
 
 def chart(store, output):
+    if Path(output).suffix.lower() in ('.jpg', '.jpeg'):
+        from tag_chart import render_jpg
+        return render_jpg(store, output)
+    if Path(output).suffix.lower() != '.svg':
+        raise ValueError('Chart output must be .jpg, .jpeg or .svg')
     import html
     groups = {}
     for key, event in store['events'].items():
@@ -143,12 +150,14 @@ def chart(store, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='+', help='Encrypted journals, same password')
-    parser.add_argument('--chart', help='Private local SVG output')
+    parser.add_argument('--chart', help='Private local JPG image (.jpg/.jpeg); legacy SVG also supported')
     parser.add_argument('--report', help='Deliberate plaintext aggregate text export, without raw records')
     parser.add_argument('--analyze', action='store_true', help='Recompute deterministic tag rules offline; never calls an agent')
     parser.add_argument('--history', help='Encrypted aggregate-only snapshot history for report export')
+    parser.add_argument('--fuzzy-chart', help='Aggregate fuzzy time/affect JPEG output')
+    parser.add_argument('--fuzzy-report', help='Derived fuzzy statistics JSON, local only')
     args = parser.parse_args()
-    if not args.chart and not args.report:
+    if not any((args.chart,args.report,args.fuzzy_chart,args.fuzzy_report)):
         parser.error('Specify --chart or --report')
     password = os.environ['TASTE_MEMORY_PASSWORD']
     stores = []
@@ -168,6 +177,10 @@ if __name__ == '__main__':
                 write_store(path, password, value)
             stores.append(value)
     combined = merge(stores)
+    if args.fuzzy_chart or args.fuzzy_report:
+        import fuzzy_chart
+        if args.fuzzy_chart:fuzzy_chart.render_jpg(combined,args.fuzzy_chart)
+        if args.fuzzy_report:fuzzy_chart.export_json(combined,args.fuzzy_report)
     if args.chart:
         chart(combined, args.chart)
     if args.report:

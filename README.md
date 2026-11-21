@@ -123,7 +123,7 @@ are descriptive grouping tools; time never changes a song's valence.
 ### Local outputs, no agent transmission
 
 ```sh
-python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --chart /private/tmp/music-tags.svg
+python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --chart /private/tmp/music-tags.jpg
 python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --report /private/tmp/agent-summary.txt --history /private/path/aggregate_history.enc
 ```
 
@@ -182,3 +182,25 @@ unequal-weight effective sample size is not a confidence interval.
 The feature records the owner's selected music. It does not authorize undisclosed
 collection of other people's personal profiles; see
 [Telegram content terms](https://telegram.org/tos/content-licensing).
+
+JPEG chart output uses Pillow and includes aggregate tag coverage and time buckets.
+Local chart files contain private preference summaries; do not commit them.
+
+
+## Local tag preservation and fuzzy JPG
+
+Original hashtags are now retained under `raw_tag_observations` inside the
+ encrypted journal even when the canonical allowlist does not recognize them.
+Only canonical tags enter aggregate text exports. Common Hip-Hop/Rap, R&B/Soul
+and compound genre spellings are normalized without inventing emotions.
+Existing records without original tags cannot be reconstructed from song names
+alone. No catalog lookup is enabled by these local-only repairs.
+
+```sh
+python scripts/taste_memory.py /private/path/memory.enc --fuzzy-chart /private/tmp/music-fuzzy.jpg --fuzzy-report /private/tmp/fuzzy-summary.json
+```
+
+The fuzzy JPG shows actual source-weighted circular time memberships separately
+from musical affect. Missing valence/energy yields an explicit empty affect
+panel; genre and time never fabricate happiness, sadness or personal wellbeing.
+The JSON is a local derived analysis artifact, not the agent plaintext export.
