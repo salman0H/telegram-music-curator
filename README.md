@@ -87,8 +87,9 @@ The bot uses Telegram audio metadata and external catalogs; it does not listen t
 
 ## Offline weighted-tag memory (current default)
 
-The memory/analysis feature runs locally **without Ollama, an agent, a model key
-or network requests**. The old metadata-to-Ollama analysis path has been removed;
+The aggregation/chart/report layer runs locally **without Ollama, an agent,
+a model key or network requests**. The separate owner-authorized catalog tag
+enrichment uses iTunes as described below. The old metadata-to-Ollama analysis path has been removed;
 `TASTE_OLLAMA_MODEL` no longer enables it. Vibe Agent's existing Groq poetry/caption
 feature remains separate and unchanged; it still uses its existing inputs.
 

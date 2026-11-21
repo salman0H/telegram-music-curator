@@ -29,7 +29,7 @@ def render_jpg(store, output):
         text(x+22,175,label,16,'#a5b5cf')
         text(x+22,212,value,42,'#69ddd0')
     panel((60,320,790,875))
-    text(86,344,'WEIGHTED TAGS',25)
+    text(86,344,'TOP 10 WEIGHTED TAGS',25)
     text(86,385,'Direct selection = 3 | Other observation = 1',17,'#a5b5cf')
     tags=sorted(summary['weighted_tags'].items(),key=lambda item:(-item[1],item[0]))[:10]
     if not tags:
