@@ -194,7 +194,7 @@ Original hashtags are now retained under `raw_tag_observations` inside the
 Only canonical tags enter aggregate text exports. Common Hip-Hop/Rap, R&B/Soul
 and compound genre spellings are normalized without inventing emotions.
 Existing records without original tags cannot be reconstructed from song names
-alone. No catalog lookup is enabled by these local-only repairs.
+alone. Catalog enrichment is enabled separately as explicitly authorized by the owner.
 
 ```sh
 python scripts/taste_memory.py /private/path/memory.enc --fuzzy-chart /private/tmp/music-fuzzy.jpg --fuzzy-report /private/tmp/fuzzy-summary.json
@@ -204,3 +204,27 @@ The fuzzy JPG shows actual source-weighted circular time memberships separately
 from musical affect. Missing valence/energy yields an explicit empty affect
 panel; genre and time never fabricate happiness, sadness or personal wellbeing.
 The JSON is a local derived analysis artifact, not the agent plaintext export.
+
+
+## Automatic non-AI tag enrichment (owner-authorized)
+
+`backfill_taste_tags.py` runs after normal processing, independently of Groq or
+Telegram caption-edit success. Curator imports its existing per-song genre index.
+For still-untagged songs, only artist/title are sent to the iTunes music catalog;
+no audio, message bodies or keys are sent. A catalog genre is accepted only when
+both artist and title match after Unicode/punctuation normalization. Wrong first
+results, unknown identities and missing catalog coverage never fabricate a tag.
+
+Archive and catalog tags retain distinct `archive_genre` / `catalog_genre`
+provenance inside encryption. Selection weights remain unchanged. Musical genres
+never become psychological mood labels. Unmatched lookups retry after one day;
+results are cached per run and requests are spaced at least 3.1 seconds apart,
+with at most 50 lookups per run. `TASTE_TAG_LOOKUP_LIMIT=0` disables catalog calls.
+
+Manual Actions workflow **Backfill encrypted music tags** performs this same
+real-data repair, verifies decryption/tag counts, and commits only the encrypted
+journal. It does not post to Telegram or call an AI agent. The regular bot
+workflows also persist the enriched journal using their existing concurrency
+lock. Tag coverage and failure statuses can be inspected without logging songs.
+
+[Apple Search API documentation](https://performance-partners.apple.com/search-api)

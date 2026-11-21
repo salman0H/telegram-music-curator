@@ -120,6 +120,11 @@ def merge(stores):
                 observations = old.setdefault('tag_observations', {})
                 for source, tags in event.get('tag_observations', {}).items():
                     observations[source] = canonical(observations.get(source, []) + tags)
+                raw=old.setdefault('raw_tag_observations', {})
+                for source,tags in event.get('raw_tag_observations', {}).items():
+                    raw[source]=sorted(set(raw.get(source, [])+tags))
+                if event.get('catalog_tag_lookup'):
+                    old['catalog_tag_lookup']=event['catalog_tag_lookup']
             result['events'][key]['preference_weight'] = max(WEIGHTS[s] for s in result['events'][key]['sources'])
     return result
 

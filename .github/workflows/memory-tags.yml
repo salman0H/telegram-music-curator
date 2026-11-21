@@ -1,0 +1,47 @@
+name: Backfill encrypted music tags
+on:
+  workflow_dispatch:
+concurrency:
+  group: music-curator-state
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  tag-memory:
+    runs-on: ubuntu-latest
+    env:
+      TASTE_MEMORY_PASSWORD: ${{ secrets.TASTE_MEMORY_PASSWORD }}
+      MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Read legacy genre index
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          if [ -f music_state.enc ]; then
+            openssl aes-256-cbc -d -pbkdf2 -md sha256 -in music_state.enc -out music_state.tar.gz -pass env:DB_PASSWORD
+            tar -xzf music_state.tar.gz
+          fi
+      - name: Collect archive and verified catalog tags without an agent
+        run: python -u scripts/backfill_taste_tags.py
+      - name: Verify authenticated tag memory
+        run: python scripts/verify_taste_memory.py
+      - name: Persist encrypted tag memory
+        if: ${{ always() }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f data/taste_memory.enc ]; then git add data/taste_memory.enc; fi
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: persist non-AI music tags in encrypted memory"
+            git pull --rebase origin main
+            git push
+          fi
+      - name: Remove decrypted temporary state
+        if: ${{ always() }}
+        run: rm -f hashtag_index.json music_state.json music_state.tar.gz

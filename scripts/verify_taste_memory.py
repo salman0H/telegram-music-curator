@@ -4,6 +4,7 @@ from pathlib import Path
 import secrets
 import tempfile
 from taste_memory import read_store, write_store
+from tag_profile import profile
 
 def main():
     password = os.environ.get("TASTE_MEMORY_PASSWORD")
@@ -26,7 +27,8 @@ def main():
     events = list(store["events"].values())
     admin = sum("vibe_admin" in event["sources"] for event in events)
     timed = sum(event["sent_at_utc"] is not None for event in events)
-    print(f"[taste_memory] authenticated journal PASS: events={len(events)}, admin_choices={admin}, timestamped={timed}")
+    tagged=profile(store)["tagged"]
+    print(f"[taste_memory] authenticated journal PASS: tagged={tagged}, events={len(events)}, admin_choices={admin}, timestamped={timed}")
 
 if __name__ == "__main__":
     main()

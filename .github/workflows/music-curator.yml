@@ -54,6 +54,12 @@ jobs:
             python -u scripts/music_curator.py
           fi
 
+      - name: Backfill deterministic music tags
+        if: ${{ always() && github.event.inputs.dry_run != 'true' }}
+        env:
+          MUSIC_CHANNEL_ID: ${{ secrets.MUSIC_CHANNEL_ID }}
+        run: python -u scripts/backfill_taste_tags.py
+
       - name: Verify encrypted choice memory
         if: ${{ always() }}
         run: python scripts/verify_taste_memory.py
