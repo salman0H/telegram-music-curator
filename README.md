@@ -16,6 +16,8 @@ Python standard library. GitHub Actions. Encrypted state.
 
 ---
 
+[راهنمای فارسی اجرا، دریافت داده و خروجی JPG/فازی](#music-memory-runbook)
+
 Music Curator reads new audio posts from a Telegram channel, looks up their metadata, and builds a compact caption with up to three genre hashtags. Similar tracks appear in that same text as **artist — song title**: no artist biographies, links, or explanations.
 
 ## The experience
@@ -50,6 +52,7 @@ Fork this repository and add these **GitHub Actions secrets** under **Settings �
 | `MUSIC_BOT_TOKEN` | Telegram bot token from BotFather |
 | `MUSIC_CHANNEL_ID` | Target channel ID, preferably its numeric `-100…` ID |
 | `DB_PASSWORD` | Password used to decrypt and encrypt the state archive |
+| `TASTE_MEMORY_PASSWORD` | Authenticated encrypted music-choice memory; same key as the other bot/local launcher |
 | `LASTFM_API_KEY` | [Last.fm API key](https://www.last.fm/api/account/create) enabling recommendations |
 
 Give the bot channel administrator permissions to edit messages, post messages, and pin summaries. Enable Actions on your fork. If you start with a fresh installation, remove the inherited `music_state.enc` before running; an existing archive requires its original password.
@@ -60,9 +63,10 @@ The workflow decrypts `music_state.enc`, processes updates, then encrypts and co
 
 ## Development
 
-Requires Python 3.12. No third-party Python packages are needed. Export the same environment variables listed above before running:
+Requires Python 3.12 or later. Install `requirements.txt` for encrypted memory and JPG export. Export the same environment variables listed above before running:
 
 ```sh
+python3 -m pip install -r requirements.txt
 python3 scripts/music_curator.py --dry-run
 python3 -m unittest discover -s tests -v
 ```
@@ -85,147 +89,172 @@ The bot uses Telegram audio metadata and external catalogs; it does not listen t
 
 
 
-## Offline weighted-tag memory (current default)
 
-The aggregation/chart/report layer runs locally **without Ollama, an agent,
-a model key or network requests**. The separate owner-authorized catalog tag
-enrichment uses iTunes as described below. The old metadata-to-Ollama analysis path has been removed;
-`TASTE_OLLAMA_MODEL` no longer enables it. Vibe Agent's existing Groq poetry/caption
-feature remains separate and unchanged; it still uses its existing inputs.
+<a id="music-memory-runbook"></a>
 
-### Recording and basic analysis
+## راهنمای اجرا و گرفتن خروجی حافظهٔ موسیقی
 
-Set `TASTE_MEMORY_PASSWORD` locally or as an Actions secret to enable the
-independent authenticated encrypted journal `data/taste_memory.enc`. Install
-`requirements.txt`. Without the password, recording is disabled.
-Raw music metadata stays inside the encrypted journal. Owner-only local key
-files belong in `.secrets/`, which is ignored; never publish the password.
+### مسیر کار
 
-Existing hashtags and Curator genre tags are normalized against the fixed
-allowlist in `scripts/tag_profile.py`. Source-tag observations retain provenance
-inside the journal. Only explicit sad/happy/neutral/calm/energetic tags and their
-listed Persian aliases inform deterministic affect rules. Dark, metal, chill,
-ambient and similar style tags remain descriptive; they do not establish the
-listener's feelings. No emotion is guessed from a title, artist, genre or hour.
-Conflicting sad/happy tags remain mixed. Missing valence or energy stays unknown.
-
-Direct admin-selected Vibe posts have preference weight 3; channel observations
-and legacy queue observations have weight 1. Re-observing the same channel/message
-uses max source weight and counts each canonical tag once, even if both bots
-observe it. A raw genre frequency is not a psychological score or probability.
-Mamdani fuzzy tools remain available for explicit valence/energy evidence, but
-the default chart/report is the simpler deterministic weighted-tag summary.
-New observations retain rule/version provenance inside authenticated encryption.
-
-The original Telegram send time is retained with timezone Asia/Tehran. Basic
-charts group by calendar hour. Broad day buckets and circular time memberships
-are descriptive grouping tools; time never changes a song's valence.
-
-### Local outputs, no agent transmission
-
-```sh
-python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --chart /private/tmp/music-tags.jpg
-python scripts/taste_memory.py /path/curator.enc /path/vibe.enc --report /private/tmp/agent-summary.txt --history /private/path/aggregate_history.enc
+```text
+دریافت/انتشار آهنگ → ثبت رمزگذاری‌شده → بازیابی تگ → ذخیره در GitHub
+        → Pull روی دستگاه → استخراج محلی → گزارش، نمودار JPG و JSON
 ```
 
-Both commands read `TASTE_MEMORY_PASSWORD` from the environment. `--analyze`
-now only recomputes explicit-tag rules offline; it never calls a model.
-The plaintext report is a deliberate export with owner-only permissions, not
-a decrypted record dump. It includes only allowlisted tag totals, source-weight
-rules, coverage and coarse time buckets; buckets under three events are suppressed.
-Track/artist names, captions, links, exact timestamps, identifiers, keys and
-ciphertext are excluded by construction. Aggregate reports still contain private
-preferences; keep exported reports out of Git. No external agent is connected or
-automatically called by this feature.
+تحلیل و گزارش‌گیری به ایجنت یا Ollama نیاز ندارند. بازیابی ژانرِ آهنگ‌های
+بدون تگ، با اجازهٔ صاحب حساب، نام آهنگ و خواننده را به iTunes می‌فرستد.
+فایل صوتی، متن پیام و کلید ارسال نمی‌شوند. فقط نتیجه‌ای پذیرفته می‌شود که
+نام آهنگ و خواننده‌اش پس از یکسان‌سازی نوشتار تطبیق داشته باشند.
 
-The optional `--history` file retains aggregate-only snapshots under the same
-authenticated encryption. Unchanged snapshots are not duplicated. The plaintext
-export includes at most the latest six snapshots for longitudinal comparison;
-all snapshots remain in encrypted history. Overlapping snapshots are not new
-independent evidence and must not be counted as extra observations.
+### ۱. اجرای بات یا بازیابی فوری تگ در GitHub
 
-Prepared templates in `prompts/aggregate_review.txt` and
-`prompts/psychological_reflection.txt` accept only the aggregate text report.
-They require competing explanations, uncertainty, missing-coverage disclosure and
-non-leading questions. Psychological reflection must distinguish music patterns,
-explicit self-report and tentative interpretation; it must not diagnose or equate
-musical sadness with the listener's mental state. Prompt wording reduces leading
-framing but cannot guarantee an unbiased model or clinical validity.
+- برای کار معمول بات، از ورک‌فلو اصلی همین مخزن استفاده کن؛ اجرای معمول،
+  مرحلهٔ بازیابی تگ و ذخیرهٔ حافظه را هم دارد.
+- برای بازیابی تگ بدون ارسال پیام به تلگرام و بدون فراخوانی ایجنت، وارد
+  **Actions → Backfill encrypted music tags → Run workflow → main** شو.
+- تا موفق‌شدن مراحل **Verify authenticated tag memory** و
+  **Persist encrypted tag memory** صبر کن؛ سپس Pull بگیر.
 
-### Verification and limitations
+کلید حافظه در Secret به نام `TASTE_MEMORY_PASSWORD` قرار دارد. برای ادغام
+دو بات، کلید هر دو مخزن و کلید محلی باید یکسان باشند. این کلید با
+`DB_PASSWORD` آرشیو قدیمی Curator یکی فرض نمی‌شود.
 
-```sh
-python -m unittest discover -s tests -v
-python scripts/verify_taste_memory.py
+در لاگ، `after_events` تعداد رکوردها و `after_tagged` تعداد موارد دارای تگ
+معتبر است. پیام `authenticated journal PASS` همراه `tagged=...` نشان می‌دهد
+فایل نوشته‌شده دوباره رمزگشایی و بررسی شده است. نام آهنگ‌ها در لاگِ این
+مرحله چاپ نمی‌شود.
+
+در هر اجرا حداکثر ۵۰ جست‌وجوی کاتالوگ انجام می‌شود؛ درخواست‌ها حداقل ۳٫۱ ثانیه
+فاصله دارند و نتایج منفی پس از یک روز دوباره قابل بررسی‌اند. نبود نتیجهٔ
+معتبر، تگ حدسی ایجاد نمی‌کند. `TASTE_TAG_LOOKUP_LIMIT=0` جست‌وجوی کاتالوگ را
+غیرفعال می‌کند و فقط منابع محلی/آرشیوی بررسی می‌شوند.
+
+### ۲. نصب ابزار مشترک محلی، فقط یک‌بار
+
+دستورهای زیر برای چیدمان فعلی دستگاه سلمان هستند؛ سه پوشهٔ `idea-planning`،
+`telegram-music-curator` و `telegram-vibe-agent` کنار هم قرار دارند. لانچر مشترک
+`music_memory_local.py` داخل پوشهٔ `idea-planning` است، نه داخل این مخزن.
+
+```bash
+cd /Users/salman/Projects/idea-planning
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
-Writes use Fernet authenticated encryption with scrypt-derived keys, fresh salts,
-atomic replacement and local locking. Wrong passwords/corrupt files do not reset
-history. Recording failure does not stop normal bot processing, so failed records
-may need recovery. Actions explicitly persists the encrypted journal, not its key.
-Separate repositories retain separate journals; the local command merges them.
-Historical records without tags remain unknown; old model guesses are not used
-as observed tags. Existing non-memory bot logs retain their prior privacy behavior.
+Python 3.12 یا جدیدتر لازم است. ابزار کلید فعلی را خودش از
+`.secrets/music-memory-password` می‌خواند. مقدار کلید را در دستور، README یا
+چت ننویس و برای بازکردن فایل موجود، کلید جدید تولید نکن.
 
-### Auditable methods
+### ۳. دریافت دادهٔ تازه و ساخت همهٔ خروجی‌ها
 
-Mamdani min implication/max aggregation and 401-point centroid defuzzification,
-circular time membership and the held-out MAE evaluation tool remain in
-`scripts/fuzzy_mood.py` and `scripts/evaluate_mood.py`. They do not validate a
-psychological conclusion. Model confidence is not calibrated probability;
-unequal-weight effective sample size is not a confidence interval.
+```bash
+git -C /Users/salman/Projects/telegram-music-curator pull --ff-only origin main
+git -C /Users/salman/Projects/telegram-vibe-agent pull --ff-only origin main
 
-- [Mamdani inference process](https://www.mathworks.com/help/fuzzy/fuzzy-inference-process.html)
+cd /Users/salman/Projects/idea-planning
+.venv/bin/python music_memory_local.py extract
+```
+
+`extract` اینترنت یا ایجنت را فراخوانی نمی‌کند؛ فایل‌های **قبلاً پول‌شده** را
+می‌خواند. همان پیام کانال دوباره شمرده نمی‌شود؛ بیشترین وزن منبع باقی
+می‌ماند. سابقهٔ محلی با هر استخراج از صفر ساخته نمی‌شود. پیش از تغییر
+حافظه، نسخهٔ قبلی به‌صورت رمزگذاری‌شده در `private/backups/` نگه داشته می‌شود.
+
+### ۴. خروجی‌ها کجا هستند؟
+
+همهٔ فایل‌های زیر داخل `/Users/salman/Projects/idea-planning/private/` هستند:
+
+| فایل | کاربرد |
+|---|---|
+| `music-vibe.jpg` | ده تگ با بیشترین وزن، پوشش تگ و تعداد ارسال‌ها در بخش‌های روز |
+| `music-fuzzy.jpg` | عضویت فازی زمان و نمودار جداگانهٔ احساس/انرژی موسیقی |
+| `extracted-summary.json` | آمار تجمیعی فعلی برای پردازش محلی |
+| `fuzzy-summary.json` | آمار فازی و مختصات مشتق‌شده برای تحلیل محلی |
+| `agent-summary.txt` | گزارش متنی تجمیعی برای بازبینی و استفادهٔ احتمالی ایجنت |
+| `music_memory.enc` | حافظهٔ مشترک رمزگذاری‌شده |
+| `aggregate_history.enc` | تاریخچهٔ رمزگذاری‌شدهٔ خلاصه‌ها |
+
+تصویرها JPG واقعی‌اند. برای بازکردن روی مک، از پوشهٔ `idea-planning` اجرا کن:
+
+```bash
+open private/music-vibe.jpg
+open private/music-fuzzy.jpg
+open private/agent-summary.txt
+```
+
+### ۵. فقط یک خروجی لازم داری؟
+
+```bash
+cd /Users/salman/Projects/idea-planning
+.venv/bin/python music_memory_local.py chart
+.venv/bin/python music_memory_local.py report
+.venv/bin/python music_memory_local.py fuzzy
+```
+
+به‌ترتیب: فقط نمودار تگ‌ها، گزارش متنی، یا نمودار/JSON فازی. هر فرمان، فایل‌های
+پول‌شده را ابتدا ادغام می‌کند و `extracted-summary.json` را هم تازه می‌کند.
+گزینهٔ قدیمی `--analyze` ضروری نیست؛ قواعد محلی همیشه دوباره محاسبه می‌شوند.
+
+### ۶. نتیجه و محدودیت‌ها را چگونه بخوانی؟
+
+- `merged_events`: تعداد رکوردهای نهایی؛ `recognized_tag_events`: تعداد موارد
+  دارای حداقل یک تگ شناخته‌شده؛ `timestamped`: موارد دارای زمان اصلی ارسال.
+- `sources_found` معمولاً ۲ و `sources_missing` معمولاً صفر است. نبود فایل یک
+  مخزن به‌معنی نبودن سابقهٔ واقعی آن نیست؛ اجرای موفق و Pull آن را بررسی کن.
+- انتخاب مستقیم و منتشرشدهٔ ادمین در Vibe وزن ۳ دارد؛ مشاهدهٔ کانال و آرشیو
+  وزن ۱ دارند. یک آهنگ می‌تواند چند تگ داشته باشد، پس مجموع وزن تگ‌ها برابر
+  تعداد آهنگ‌ها نیست.
+- هشتگ‌های اصلی حتی اگر ناشناخته باشند در `raw_tag_observations` داخل حافظهٔ
+  رمزگذاری‌شده می‌مانند؛ گزارش فقط تگ‌های شناخته‌شده را می‌آورد.
+- تگ‌های آرشیو و کاتالوگ منشأ جداگانهٔ `archive_genre` و `catalog_genre` دارند.
+- نمودار زمانی از زمان ارسال استفاده می‌کند؛ زمان اجرای بات جایگزین آن نمی‌شود.
+  تاریخِ ناموجود برای رکورد قدیمی حدس زده نمی‌شود.
+- نمودار فازی احساس به **هر دو** تگِ جهت احساس (`sad`/`happy`/`neutral`) و انرژی
+  (`calm`/`energetic`) نیاز دارد. خالی‌بودن این بخش با پیام کمبود شواهد طبیعی است.
+- عضویت فازی احتمال نیست؛ ژانرهایی مثل Rock یا Metal اثبات‌کنندهٔ غم، شادی یا
+  وضعیت روانی تو نیستند.
+
+### ۷. مرز اطلاعاتی ایجنت و نگهداری امن
+
+فقط متن بازبینی‌شدهٔ `agent-summary.txt` را همراه یکی از پرامپت‌های
+[`aggregate_review.txt`](prompts/aggregate_review.txt) یا
+[`psychological_reflection.txt`](prompts/psychological_reflection.txt) استفاده کن.
+گزارش، نام آهنگ/خواننده، شناسه‌ها، کپشن، لینک، زمان دقیق، کلید یا ciphertext
+ندارد. فایل خام `.enc`، کلید، لاگ و `fuzzy-summary.json` جایگزین آن نیستند.
+فایل فازی برای تحلیل محلی است و می‌تواند مختصات مشتق‌شدهٔ تک‌مشاهده داشته باشد.
+
+خلاصهٔ تکراری دوباره در تاریخچه ثبت نمی‌شود و متن، حداکثر شش خلاصهٔ اخیر را
+نشان می‌دهد. گزارش‌های هم‌پوشان شاهد مستقل جدید نیستند. گزارش و JPG هم خصوصی
+هستند؛ آن‌ها را وارد Git نکن. اتصال خودکار به ایجنت تحلیل‌گر هنوز ساخته نشده؛
+کپشن‌نویسی فعلی Vibe با Groq، مسیری جدا با ورودی‌های قبلی خودش است.
+
+### ۸. عیب‌یابی
+
+| مشکل | اقدام |
+|---|---|
+| خطای نبود `PIL` یا `cryptography` | نصب `requirements.txt` را با همان `.venv/bin/pip` تکرار کن. |
+| `InvalidToken` یا خطای رمزگشایی | کلید فعلی، یکسان‌بودن Secrets و سلامت فایل را بررسی کن؛ حافظه را حذف نکن. |
+| داده یا نمودار قدیمی است | موفق‌شدن اجرای GitHub، سپس Pull و در پایان `extract` را بررسی کن. |
+| آهنگ بدون تگ است | سقف بررسی هر اجرا، نبود تطبیق یا ژانر ناموجود/ناشناخته را در لاگ ببین. |
+| زمان آرشیوی نامشخص است | زمان اصلی موجود نبوده؛ نباید با زمان اجرای امروز جایگزین شود. |
+| بخش احساس فازی خالی است | نبود تگ صریح احساس/انرژی؛ ژانر به‌تنهایی کافی نیست. |
+
+تست‌های همین مخزن:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 -m unittest discover -s tests -v
+```
+
+برای جزئیات کامل اجرای اختیاری بات‌ها روی دستگاه و نقش هر فایل، راهنمای محلی
+`/Users/salman/Projects/idea-planning/README.md` را بخوان.
+
+### مبنای روش‌ها
+
+- [Mamdani inference](https://www.mathworks.com/help/fuzzy/fuzzy-inference-process.html)
 - [Centroid defuzzification](https://www.mathworks.com/help/fuzzy/defuzzification-methods.html)
-- [Music-emotion benchmark DEAM](https://cvml.unige.ch/databases/DEAM/)
-- [Unequal-weight effective sample size](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html)
+- [Apple Search API](https://performance-partners.apple.com/search-api)
 
-The feature records the owner's selected music. It does not authorize undisclosed
-collection of other people's personal profiles; see
-[Telegram content terms](https://telegram.org/tos/content-licensing).
-
-JPEG chart output uses Pillow and includes aggregate tag coverage and time buckets.
-Local chart files contain private preference summaries; do not commit them.
-
-
-## Local tag preservation and fuzzy JPG
-
-Original hashtags are now retained under `raw_tag_observations` inside the
- encrypted journal even when the canonical allowlist does not recognize them.
-Only canonical tags enter aggregate text exports. Common Hip-Hop/Rap, R&B/Soul
-and compound genre spellings are normalized without inventing emotions.
-Existing records without original tags cannot be reconstructed from song names
-alone. Catalog enrichment is enabled separately as explicitly authorized by the owner.
-
-```sh
-python scripts/taste_memory.py /private/path/memory.enc --fuzzy-chart /private/tmp/music-fuzzy.jpg --fuzzy-report /private/tmp/fuzzy-summary.json
-```
-
-The fuzzy JPG shows actual source-weighted circular time memberships separately
-from musical affect. Missing valence/energy yields an explicit empty affect
-panel; genre and time never fabricate happiness, sadness or personal wellbeing.
-The JSON is a local derived analysis artifact, not the agent plaintext export.
-
-
-## Automatic non-AI tag enrichment (owner-authorized)
-
-`backfill_taste_tags.py` runs after normal processing, independently of Groq or
-Telegram caption-edit success. Curator imports its existing per-song genre index.
-For still-untagged songs, only artist/title are sent to the iTunes music catalog;
-no audio, message bodies or keys are sent. A catalog genre is accepted only when
-both artist and title match after Unicode/punctuation normalization. Wrong first
-results, unknown identities and missing catalog coverage never fabricate a tag.
-
-Archive and catalog tags retain distinct `archive_genre` / `catalog_genre`
-provenance inside encryption. Selection weights remain unchanged. Musical genres
-never become psychological mood labels. Unmatched lookups retry after one day;
-results are cached per run and requests are spaced at least 3.1 seconds apart,
-with at most 50 lookups per run. `TASTE_TAG_LOOKUP_LIMIT=0` disables catalog calls.
-
-Manual Actions workflow **Backfill encrypted music tags** performs this same
-real-data repair, verifies decryption/tag counts, and commits only the encrypted
-journal. It does not post to Telegram or call an AI agent. The regular bot
-workflows also persist the enriched journal using their existing concurrency
-lock. Tag coverage and failure statuses can be inspected without logging songs.
-
-[Apple Search API documentation](https://performance-partners.apple.com/search-api)
+قواعد فازی و ابزار مقایسهٔ خطای روش با برچسب انسانی در `scripts/fuzzy_mood.py`
+و `scripts/evaluate_mood.py` هستند. تست درست‌بودن پیاده‌سازی، اعتبار تشخیص
+روان‌شناختی ایجاد نمی‌کند.
